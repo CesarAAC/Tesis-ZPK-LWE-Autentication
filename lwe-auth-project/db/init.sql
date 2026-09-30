@@ -1,31 +1,33 @@
--- Habilitar extensión para UUIDs (útil para identificadores de desafío difíciles de predecir)
+-- UUID generation for authentication challenge identifiers.
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Tabla de Usuarios
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Tabla de Claves Públicas
--- Usamos JSONB para "key_data" porque ECDSA guarda un string (PEM), 
--- pero LWE guarda arreglos multidimensionales (Matriz A, Vector b, q).
+-- Public material only. Private keys must remain on the prover/client side.
 CREATE TABLE IF NOT EXISTS public_keys (
     id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES users(id) ON DELETE CASCADE,
-    protocol_name VARCHAR(30) NOT NULL, -- ej: 'standard_ecdsa', 'standard_lwe', 'binary_lwe'
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    protocol_name VARCHAR(30) NOT NULL,
     key_data JSONB NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Tabla de Desafíos de Autenticación
--- Registra el desafío generado por el servidor a la espera de la respuesta matemática del cliente.
 CREATE TABLE IF NOT EXISTS auth_challenges (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     protocol_name VARCHAR(30) NOT NULL,
-    challenge_data JSONB NOT NULL,        -- Guarda el vector 'r' (LWE) o 'nonce' (ECDSA)
-    status VARCHAR(20) DEFAULT 'PENDING', -- Estados: 'PENDING', 'SUCCESS', 'FAILED'
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    challenge_data JSONB NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_public_keys_user_protocol
+    ON public_keys (user_id, protocol_name);
+
+CREATE INDEX IF NOT EXISTS idx_auth_challenges_user_status
+    ON auth_challenges (user_id, status);
