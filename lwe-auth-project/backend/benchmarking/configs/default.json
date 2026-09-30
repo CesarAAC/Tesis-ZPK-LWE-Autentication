@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "experiment_name": "authentication-protocol-comparison",
+  "target_security_bits": 128,
+  "warmup_iterations": 20,
+  "timing_iterations": 200,
+  "authentication_key_sets": 5,
+  "memory_iterations": 20,
+  "memory_sample_interval_ms": 1.0,
+  "cooldown_seconds_between_protocols": 1.0,
+  "randomize_protocol_order": true,
+  "protocol_order_seed": 20260930,
+  "store_raw_samples": true,
+  "protocol_parameters": {
+    "ecdsa": {}
+  },
+  "network_scenarios": [
+    {
+      "name": "local",
+      "rtt_ms": 0.2,
+      "bandwidth_mbps": 1000.0,
+      "description": "Escenario sintético de referencia para una red local rápida."
+    },
+    {
+      "name": "low-latency",
+      "rtt_ms": 10.0,
+      "bandwidth_mbps": 100.0,
+      "description": "Escenario sintético de baja latencia."
+    },
+    {
+      "name": "medium-latency",
+      "rtt_ms": 50.0,
+      "bandwidth_mbps": 25.0,
+      "description": "Escenario sintético de latencia media."
+    },
+    {
+      "name": "high-latency",
+      "rtt_ms": 100.0,
+      "bandwidth_mbps": 10.0,
+      "description": "Escenario sintético de alta latencia."
+    },
+    {
+      "name": "constrained",
+      "rtt_ms": 250.0,
+      "bandwidth_mbps": 1.0,
+      "description": "Escenario sintético de red restringida."
+    }
+  ]
+}

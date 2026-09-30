@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "protocol_id": "REPLACE_WITH_CANONICAL_PROTOCOL_ID",
+  "implementation": {
+    "specialized_arithmetic_required": {
+      "value": null,
+      "evidence": ""
+    },
+    "secure_sampling_complexity": {
+      "value": null,
+      "evidence": ""
+    },
+    "serialization_complexity": {
+      "value": null,
+      "evidence": ""
+    },
+    "state_management_complexity": {
+      "value": null,
+      "evidence": ""
+    }
+  },
+  "operational": {
+    "enrollment_steps": {
+      "value": null,
+      "evidence": ""
+    },
+    "user_visible_authentication_steps": {
+      "value": null,
+      "evidence": ""
+    },
+    "key_rotation_procedure": {
+      "value": null,
+      "evidence": ""
+    },
+    "credential_recovery_procedure": {
+      "value": null,
+      "evidence": ""
+    }
+  },
+  "trust_architecture": {
+    "requires_registration_authority": {
+      "value": null,
+      "evidence": ""
+    },
+    "requires_pki": {
+      "value": null,
+      "evidence": ""
+    },
+    "verifier_stores_secret": {
+      "value": null,
+      "evidence": ""
+    },
+    "verifier_stores_per_user_state": {
+      "value": null,
+      "evidence": ""
+    },
+    "offline_verification_possible": {
+      "value": null,
+      "evidence": ""
+    },
+    "server_compromise_impact": {
+      "value": null,
+      "evidence": ""
+    }
+  },
+  "maturity": {
+    "standardization_status": {
+      "value": null,
+      "evidence": ""
+    },
+    "library_ecosystem": {
+      "value": null,
+      "evidence": ""
+    },
+    "interoperability": {
+      "value": null,
+      "evidence": ""
+    },
+    "documentation_availability": {
+      "value": null,
+      "evidence": ""
+    }
+  },
+  "security": {
+    "underlying_problem": {
+      "value": null,
+      "evidence": ""
+    },
+    "classical_security_bits": {
+      "value": null,
+      "evidence": ""
+    },
+    "quantum_security_bits": {
+      "value": null,
+      "evidence": ""
+    },
+    "relevant_attacks": {
+      "value": [],
+      "evidence": ""
+    },
+    "parameter_constraints": {
+      "value": null,
+      "evidence": ""
+    },
+    "failure_probability": {
+      "value": null,
+      "evidence": ""
+    }
+  }
+}

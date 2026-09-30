@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "protocol_id": "REPLACE_WITH_CANONICAL_PROTOCOL_ID",
+  "assessment_type": "estimator-or-literature",
+  "tool_or_source": "REPLACE_WITH_TOOL_STANDARD_OR_PAPER",
+  "tool_version": null,
+  "classical_security_bits": null,
+  "quantum_security_bits": null,
+  "assumptions": {
+    "parameter_set": "copy the exact effective parameters used by the benchmark",
+    "cost_model": null,
+    "notes": null
+  },
+  "evidence": {
+    "command": null,
+    "raw_output_file": null,
+    "url_or_citation": null,
+    "notes": null
+  }
+}

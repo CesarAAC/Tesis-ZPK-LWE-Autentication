@@ -70,7 +70,45 @@ class StandardECDSAProtocol(AuthProtocol):
     def name(self) -> str:
         return "standard_ecdsa"
 
-    def generate_keypair(self, **params: Any) -> KeyPair:
+    def default_parameters(self) -> SerializedData:
+        return {
+            "curve": "secp256r1",
+            "hash": "sha256",
+            "challenge_bytes": _NONCE_SIZE_BYTES,
+        }
+
+    def resolve_parameters(
+        self, overrides: SerializedData | None = None
+    ) -> SerializedData:
+        resolved = self.default_parameters()
+        overrides = overrides or {}
+        unknown = set(overrides) - set(resolved)
+        if unknown:
+            raise InvalidProtocolDataError(
+                f"Parámetros ECDSA desconocidos: {sorted(unknown)}."
+            )
+        resolved.update(overrides)
+        expected = self.default_parameters()
+        if resolved != expected:
+            raise InvalidProtocolDataError(
+                "La implementación baseline fija ECDSA a P-256, SHA-256 y nonce de 32 bytes."
+            )
+        return resolved
+
+    def generate_system_parameters(self, **params: Any) -> SerializedData:
+        self.resolve_parameters(params)
+        return {}
+
+    def generate_keypair(
+        self,
+        system_parameters: SerializedData,
+        **params: Any,
+    ) -> KeyPair:
+        if system_parameters != {}:
+            raise InvalidProtocolDataError(
+                "ECDSA no utiliza parámetros públicos generados durante setup."
+            )
+        self.resolve_parameters(params)
         private_key = ec.generate_private_key(_CURVE)
         public_key = private_key.public_key()
 
@@ -89,7 +127,15 @@ class StandardECDSAProtocol(AuthProtocol):
             {"key_pem": base64.b64encode(private_bytes).decode("ascii")},
         )
 
-    def generate_challenge(self, public_key: SerializedData) -> SerializedData:
+    def generate_challenge(
+        self,
+        system_parameters: SerializedData,
+        public_key: SerializedData,
+    ) -> SerializedData:
+        if system_parameters != {}:
+            raise InvalidProtocolDataError(
+                "ECDSA no utiliza parámetros públicos generados durante setup."
+            )
         # ECDSA does not need the public key to create a nonce, but the common
         # interface keeps the argument for protocols that do need it.
         del public_key
@@ -98,9 +144,14 @@ class StandardECDSAProtocol(AuthProtocol):
 
     def solve_challenge(
         self,
+        system_parameters: SerializedData,
         private_key: SerializedData,
         challenge: SerializedData,
     ) -> SerializedData:
+        if system_parameters != {}:
+            raise InvalidProtocolDataError(
+                "ECDSA no utiliza parámetros públicos generados durante setup."
+            )
         key = _load_private_key(private_key)
 
         try:
@@ -117,10 +168,15 @@ class StandardECDSAProtocol(AuthProtocol):
 
     def verify_response(
         self,
+        system_parameters: SerializedData,
         public_key: SerializedData,
         challenge: SerializedData,
         response: SerializedData,
     ) -> bool:
+        if system_parameters != {}:
+            raise InvalidProtocolDataError(
+                "ECDSA no utiliza parámetros públicos generados durante setup."
+            )
         key = _load_public_key(public_key)
 
         try:

@@ -24,3 +24,6 @@ venv/
 
 # Local artifacts
 *.log
+
+# Benchmark outputs are reproducible/generated artifacts.
+backend/benchmark-results/

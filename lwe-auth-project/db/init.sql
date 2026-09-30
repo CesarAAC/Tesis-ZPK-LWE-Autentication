@@ -31,3 +31,6 @@ CREATE INDEX IF NOT EXISTS idx_public_keys_user_protocol
 
 CREATE INDEX IF NOT EXISTS idx_auth_challenges_user_status
     ON auth_challenges (user_id, status);
+
+-- Benchmark tables. The db directory is mounted read-only at /db by Compose.
+\i /db/migrations/001_benchmarking.sql

@@ -11,6 +11,7 @@ services:
       - "${POSTGRES_HOST_PORT:-5437}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./db:/db:ro
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test:
@@ -26,12 +27,23 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: ${API_IMAGE_NAME:-lwe-auth-project-api:local}
     container_name: lwe_api_service
     restart: unless-stopped
     ports:
       - "${API_PORT:-8010}:8010"
     volumes:
       - ./backend:/app
+
+  benchmark:
+    image: ${API_IMAGE_NAME:-lwe-auth-project-api:local}
+    profiles: ["tools"]
+    working_dir: /app
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://lwe_user:lwe_password@db:5432/lwe_auth_db}
+    volumes:
+      - ./backend:/app
+    entrypoint: []
 
 volumes:
   postgres_data:
