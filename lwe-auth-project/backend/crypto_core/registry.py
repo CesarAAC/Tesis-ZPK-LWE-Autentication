@@ -6,6 +6,7 @@ from typing import Callable
 from crypto_core.exceptions import ProtocolUnavailableError, UnknownProtocolError
 from crypto_core.interface import AuthProtocol
 from crypto_core.protocols.ecdsa import StandardECDSAProtocol
+from crypto_core.protocols.regev_lwe import BinaryLWEProtocol, StandardLWEProtocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,18 +49,24 @@ _PROTOCOL_SPECS: tuple[ProtocolSpec, ...] = (
         display_name="Standard LWE",
         family="lwe",
         aliases=("lwe",),
-        declared_dependencies=(),
-        implementation_factory=None,
-        development_note="Falta implementar un challenge/response verificable completo.",
+        declared_dependencies=("numpy",),
+        implementation_factory=StandardLWEProtocol,
+        development_note=(
+            "Regev LWE con secreto uniforme en Z_q y desafío por encriptación "
+            "con verificación Fujisaki-Okamoto."
+        ),
     ),
     ProtocolSpec(
         protocol_id="binary_lwe",
         display_name="Binary LWE",
         family="lwe",
         aliases=(),
-        declared_dependencies=(),
-        implementation_factory=None,
-        development_note="Falta implementar un challenge/response verificable completo.",
+        declared_dependencies=("numpy",),
+        implementation_factory=BinaryLWEProtocol,
+        development_note=(
+            "Regev LWE con secreto binario y desafío por encriptación "
+            "con verificación Fujisaki-Okamoto."
+        ),
     ),
     ProtocolSpec(
         protocol_id="ring_lwe",

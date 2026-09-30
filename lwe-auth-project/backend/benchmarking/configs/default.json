@@ -12,7 +12,21 @@
   "protocol_order_seed": 20260930,
   "store_raw_samples": true,
   "protocol_parameters": {
-    "ecdsa": {}
+    "ecdsa": {},
+    "standard_lwe": {
+      "n": 640,
+      "m": 9871,
+      "q": 32768,
+      "sigma": 2.8,
+      "message_bits": 128
+    },
+    "binary_lwe": {
+      "n": 640,
+      "m": 9871,
+      "q": 32768,
+      "sigma": 2.8,
+      "message_bits": 128
+    }
   },
   "network_scenarios": [
     {

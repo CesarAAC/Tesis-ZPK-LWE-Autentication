@@ -3,8 +3,8 @@
 Repositorio experimental para comparar, bajo una metodología común y reproducible, seis candidatos de autenticación:
 
 1. `ecdsa` — ECDSA P-256, baseline tradicional.
-2. `standard_lwe` — autenticación basada en LWE estándar (**pendiente de implementación**).
-3. `binary_lwe` — variante LWE con secreto binario (**pendiente**).
+2. `standard_lwe` — autenticación basada en LWE estándar (Regev, secreto uniforme en Z_q).
+3. `binary_lwe` — variante LWE con secreto binario (Regev, secreto en {0,1}^n).
 4. `ring_lwe` — variante Ring-LWE (**pendiente**).
 5. `lwr` — Learning With Rounding (**pendiente**).
 6. `proposed_lwe` — protocolo diseñado en la tesis (**pendiente**).
@@ -17,12 +17,10 @@ El objetivo del repositorio no es producir un “ganador” automático. El fram
 
 ## Estado actual
 
-- ECDSA P-256 es el único candidato completamente implementado.
-- Los helpers de generación de claves Standard-LWE y Binary-LWE continúan en `backend/crypto_core/lwe/` como primitivas reutilizables; no son protocolos de autenticación.
-- Los otros cuatro candidatos existen en el catálogo con `implementation_factory=None` y fallan de forma cerrada.
+- Implementados completamente: `ecdsa`, `standard_lwe` y `binary_lwe` (ver [Candidatos LWE implementados](#candidatos-lwe-implementados-standard_lwe-y-binary_lwe)).
+- `backend/crypto_core/lwe/` contiene primitivas reutilizables (muestreo con CSPRNG, codificación, cifrado Regev y los helpers Sage de keygen); no son protocolos de autenticación.
+- `ring_lwe`, `lwr` y `proposed_lwe` existen en el catálogo con `implementation_factory=None` y fallan de forma cerrada.
 - Ya están preparados el contrato común, benchmark runner, pruebas de conformidad, mediciones, exportación JSON/CSV, persistencia PostgreSQL, proyecciones de red y formatos para assessments cualitativos y estimaciones de seguridad.
-
-No se implementa ningún protocolo LWE nuevo en esta etapa.
 
 ---
 
@@ -203,6 +201,47 @@ Una respuesta producida para una clave no debe verificar bajo otra clave públic
 ### 5. Sin mutación silenciosa
 
 Las operaciones no deben modificar estructuras de entrada como `system_parameters`, clave pública o clave privada.
+
+---
+
+# Candidatos LWE implementados (`standard_lwe` y `binary_lwe`)
+
+Ambos viven en `backend/crypto_core/protocols/regev_lwe.py` y comparten exactamente la misma plantilla de protocolo; solo cambia la distribución del secreto `s`. Así, cualquier diferencia medida entre ambos se atribuye a esa decisión. Las primitivas están en `backend/crypto_core/lwe/` (`sampling.py`, `codec.py`, `regev.py`).
+
+```text
+Setup (por despliegue):
+    A <- U(Z_q^{m x n})                      -> system_parameters (+ parámetros efectivos)
+
+Enrollment (por usuario):
+    s <- U(Z_q^n)   (standard_lwe)   |   s <- U({0,1}^n)   (binary_lwe)
+    e <- Gaussiana discreta(sigma)^m
+    b = A s + e mod q                        -> public_key = {b}, private_key = {s, b}
+
+Autenticación (por sesión):
+    Verificador: nonce, mu <- {0,1}^k
+                 R = SHAKE-256(H(nonce, H(pk), mu)) en {0,1}^{k x m}
+                 U = R A,  V = R b + mu * floor(q/2)   (cifrado Regev bit a bit)
+                 challenge = {nonce, U, V, commitment = H(params, H(pk), nonce, U, V, mu)}
+    Probador:    mu' = Dec_s(U, V); re-deriva R' y re-cifra;
+                 responde mu' solo si (U', V') == (U, V) y el commitment coincide
+    Verificador: acepta si H(params, H(pk), nonce, U, V, mu') == commitment
+```
+
+Decisiones de diseño:
+
+- **Setup compartido.** `A` es material público común al despliegue; por usuario solo se almacena `b`. La clave privada incluye `b` porque el probador necesita re-cifrar (igual que Kyber/Frodo incluyen la clave pública en la privada).
+- **Chequeo Fujisaki–Okamoto en el probador.** Sin él, un verificador malicioso podría enviar cifrados manipulados y usar al probador como oráculo de desencriptación para recuperar `s`.
+- **El desafío es estado de sesión del verificador.** `verify_response()` confía en el commitment del desafío emitido; en un despliegue real el servidor conserva su copia del desafío y nunca acepta uno enviado por el cliente. El commitment permite guardar el desafío sin almacenar `mu` en claro.
+- **`m` mínimo forzado.** `resolve_parameters()` exige `m >= (n + 1) * ceil(log2 q) + 256` (leftover hash lemma). Con menos muestras `R A` es un subset-sum de baja densidad resoluble por reducción de retículos y `mu` se obtendría sin la clave. Si no se indica `m`, se deriva ese mínimo y se registra explícitamente.
+- **Corrección.** Se exige `floor(q/4) > 10 · sigma · sqrt(m)`; un fallo de desencriptación rechazaría a un usuario legítimo.
+- **Aleatoriedad.** Todo muestreo usa `secrets.token_bytes`; la aleatoriedad de cifrado se deriva con SHAKE-256 solo para permitir la re-encriptación. NumPy se usa únicamente para aritmética (`m · (q − 1) < 2^53` garantiza que el producto en float64/BLAS sea exacto).
+- **Serialización.** Coeficientes como uint16 little-endian en Base64; el secreto binario se empaqueta a 1 bit por coeficiente.
+
+Parámetros por defecto: `n = 640`, `q = 2^15`, `sigma = 2.8` (inspirados en FrodoKEM-640), `m = 9871`, `k = message_bits = 128`. Ajustables: `n`, `m`, `q`, `sigma`, `message_bits`; el resto queda fijo y se rechaza cualquier otro valor.
+
+> **Advertencia:** estos parámetros son un punto de partida, no una demostración de seguridad. Para el mismo `n`, el secreto binario es más débil que el uniforme. La seguridad efectiva de cada conjunto debe estimarse (p. ej. con lattice-estimator) y registrarse con `security_cli` antes de usar resultados en la tesis.
+
+Orden de magnitud con los valores por defecto: `system_parameters` ≈ 16.8 MB, clave pública ≈ 26 KB, desafío ≈ 219 KB, respuesta ≈ 38 B.
 
 ---
 
