@@ -5,8 +5,8 @@ Repositorio experimental para comparar, bajo una metodología común y reproduci
 1. `ecdsa` — ECDSA P-256, baseline tradicional.
 2. `standard_lwe` — autenticación basada en LWE estándar (Regev, secreto uniforme en Z_q).
 3. `binary_lwe` — variante LWE con secreto binario (Regev, secreto en {0,1}^n).
-4. `ring_lwe` — variante Ring-LWE (**pendiente**).
-5. `lwr` — Learning With Rounding (**pendiente**).
+4. `ring_lwe` — autenticación Ring-LWE sobre $Z_q[x]/(x^n+1)$.
+5. `lwr` — autenticación Learning With Rounding (LWR).
 6. `proposed_lwe` — protocolo diseñado en la tesis (**pendiente**).
 
 El objetivo del repositorio no es producir un “ganador” automático. El framework registra evidencia comparable sobre rendimiento, memoria, tamaños serializados, comunicación, almacenamiento, comportamiento proyectado bajo distintas redes, complejidad de implementación y metadatos de reproducibilidad. Las afirmaciones de seguridad, madurez y arquitectura se almacenan aparte y deben incluir evidencia explícita.
@@ -17,9 +17,10 @@ El objetivo del repositorio no es producir un “ganador” automático. El fram
 
 ## Estado actual
 
-- Implementados completamente: `ecdsa`, `standard_lwe` y `binary_lwe` (ver [Candidatos LWE implementados](#candidatos-lwe-implementados-standard_lwe-y-binary_lwe)).
-- `backend/crypto_core/lwe/` contiene primitivas reutilizables (muestreo con CSPRNG, codificación, cifrado Regev y los helpers Sage de keygen); no son protocolos de autenticación.
-- `ring_lwe`, `lwr` y `proposed_lwe` existen en el catálogo con `implementation_factory=None` y fallan de forma cerrada.
+- Implementados completamente: `ecdsa`, `standard_lwe`, `binary_lwe`, `ring_lwe` y `lwr`.
+- `backend/crypto_core/lwe/` contiene primitivas reutilizables (muestreo con CSPRNG, codificación, Regev, aritmética negacíclica Ring-LWE, rounding LWR y helpers Sage de keygen); no son protocolos de autenticación por sí solas.
+- `proposed_lwe` permanece reservado en el catálogo con `implementation_factory=None` y falla de forma cerrada.
+- Los parámetros por defecto de `ring_lwe` y `lwr` son parámetros experimentales del prototipo; su nivel de seguridad debe estimarse y documentarse por separado antes de usarlos como evidencia de tesis.
 - Ya están preparados el contrato común, benchmark runner, pruebas de conformidad, mediciones, exportación JSON/CSV, persistencia PostgreSQL, proyecciones de red y formatos para assessments cualitativos y estimaciones de seguridad.
 
 ---

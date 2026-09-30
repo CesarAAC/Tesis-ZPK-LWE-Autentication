@@ -48,6 +48,47 @@ def sample_binary(shape: tuple[int, ...]) -> np.ndarray:
     return np.unpackbits(raw, bitorder="little")[:count].astype(np.int64).reshape(shape)
 
 
+def _centered_binomial_from_bytes(
+    raw_bytes: bytes,
+    shape: tuple[int, ...],
+    eta: int,
+) -> np.ndarray:
+    """Map a bit stream to centered-binomial coefficients in [-eta, eta]."""
+    count = _count(shape)
+    bits_needed = 2 * eta * count
+    bits = np.unpackbits(
+        np.frombuffer(raw_bytes, dtype=np.uint8),
+        bitorder="little",
+    )[:bits_needed].reshape(count, 2 * eta)
+    coefficients = bits[:, :eta].sum(axis=1) - bits[:, eta:].sum(axis=1)
+    return coefficients.astype(np.int64).reshape(shape)
+
+
+def sample_centered_binomial(shape: tuple[int, ...], eta: int) -> np.ndarray:
+    """Sample centered-binomial coefficients using the OS CSPRNG."""
+    if eta < 1:
+        raise ValueError("eta must be positive")
+    bits_needed = 2 * eta * _count(shape)
+    return _centered_binomial_from_bytes(
+        secrets.token_bytes((bits_needed + 7) // 8),
+        shape,
+        eta,
+    )
+
+
+def derive_centered_binomial(
+    seed: bytes,
+    shape: tuple[int, ...],
+    eta: int,
+) -> np.ndarray:
+    """Deterministically derive centered-binomial coefficients with SHAKE-256."""
+    if eta < 1:
+        raise ValueError("eta must be positive")
+    bits_needed = 2 * eta * _count(shape)
+    stream = hashlib.shake_256(seed).digest((bits_needed + 7) // 8)
+    return _centered_binomial_from_bytes(stream, shape, eta)
+
+
 @lru_cache(maxsize=16)
 def _gaussian_cdt(sigma: float, tail_sigmas: int) -> tuple[int, np.ndarray]:
     bound = math.ceil(tail_sigmas * sigma)

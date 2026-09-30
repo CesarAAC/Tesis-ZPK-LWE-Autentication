@@ -7,6 +7,8 @@ from crypto_core.exceptions import ProtocolUnavailableError, UnknownProtocolErro
 from crypto_core.interface import AuthProtocol
 from crypto_core.protocols.ecdsa import StandardECDSAProtocol
 from crypto_core.protocols.regev_lwe import BinaryLWEProtocol, StandardLWEProtocol
+from crypto_core.protocols.ring_lwe import RingLWEProtocol
+from crypto_core.protocols.lwr_auth import LWRProtocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,18 +75,24 @@ _PROTOCOL_SPECS: tuple[ProtocolSpec, ...] = (
         display_name="Ring-LWE",
         family="ring-lwe",
         aliases=(),
-        declared_dependencies=(),
-        implementation_factory=None,
-        development_note="Candidato reservado para implementación posterior.",
+        declared_dependencies=("numpy",),
+        implementation_factory=RingLWEProtocol,
+        development_note=(
+            "Ring-LWE sobre Z_q[x]/(x^n+1) con secreto/error centered-binomial "
+            "y verificación por re-encriptación Fujisaki-Okamoto."
+        ),
     ),
     ProtocolSpec(
         protocol_id="lwr",
         display_name="Learning With Rounding",
         family="lwr",
         aliases=("lwrounding", "lwr_auth"),
-        declared_dependencies=(),
-        implementation_factory=None,
-        development_note="Candidato reservado para implementación posterior.",
+        declared_dependencies=("numpy",),
+        implementation_factory=LWRProtocol,
+        development_note=(
+            "Learning With Rounding con secreto uniforme, rounding q->p y "
+            "verificación por re-encriptación Fujisaki-Okamoto."
+        ),
     ),
     ProtocolSpec(
         protocol_id="proposed_lwe",
