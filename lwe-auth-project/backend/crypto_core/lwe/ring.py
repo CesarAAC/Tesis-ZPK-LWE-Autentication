@@ -15,17 +15,3 @@ def negacyclic_multiply(left: np.ndarray, right: np.ndarray, q: int) -> np.ndarr
         result[: n - 1] -= convolution[n:]
     return result % q
 
-
-def encode_message(message: bytes, n: int, q: int) -> np.ndarray:
-    bits = np.unpackbits(np.frombuffer(message, dtype=np.uint8), bitorder="little").astype(np.int64)
-    if bits.size > n:
-        raise ValueError("Message does not fit in the ring polynomial.")
-    encoded = np.zeros(n, dtype=np.int64)
-    encoded[: bits.size] = bits * (q // 2)
-    return encoded
-
-
-def decode_message(polynomial: np.ndarray, message_bits: int, q: int) -> bytes:
-    noisy = np.asarray(polynomial, dtype=np.int64)[:message_bits] % q
-    bits = ((4 * noisy > q) & (4 * noisy < 3 * q)).astype(np.uint8)
-    return np.packbits(bits, bitorder="little").tobytes()

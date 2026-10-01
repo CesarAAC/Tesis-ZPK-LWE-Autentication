@@ -6,7 +6,7 @@ from typing import Callable
 from crypto_core.exceptions import ProtocolUnavailableError, UnknownProtocolError
 from crypto_core.interface import AuthProtocol
 from crypto_core.protocols.ecdsa import StandardECDSAProtocol
-from crypto_core.protocols.regev_lwe import BinaryLWEProtocol, StandardLWEProtocol
+from crypto_core.protocols.lwe_zk import BinaryLWEProtocol, StandardLWEProtocol
 from crypto_core.protocols.ring_lwe import RingLWEProtocol
 from crypto_core.protocols.lwr_auth import LWRProtocol
 
@@ -53,10 +53,7 @@ _PROTOCOL_SPECS: tuple[ProtocolSpec, ...] = (
         aliases=("lwe",),
         declared_dependencies=("numpy",),
         implementation_factory=StandardLWEProtocol,
-        development_note=(
-            "Regev LWE con secreto uniforme en Z_q y desafío por encriptación "
-            "con verificación Fujisaki-Okamoto."
-        ),
+        development_note="Identificación Fiat-Shamir con abortos (NIZK en ROM) sobre LWE (secreto binomial centrado).",
     ),
     ProtocolSpec(
         protocol_id="binary_lwe",
@@ -65,10 +62,7 @@ _PROTOCOL_SPECS: tuple[ProtocolSpec, ...] = (
         aliases=(),
         declared_dependencies=("numpy",),
         implementation_factory=BinaryLWEProtocol,
-        development_note=(
-            "Regev LWE con secreto binario y desafío por encriptación "
-            "con verificación Fujisaki-Okamoto."
-        ),
+        development_note="Identificación Fiat-Shamir con abortos (NIZK en ROM) sobre LWE con secreto binario.",
     ),
     ProtocolSpec(
         protocol_id="ring_lwe",
@@ -77,10 +71,7 @@ _PROTOCOL_SPECS: tuple[ProtocolSpec, ...] = (
         aliases=(),
         declared_dependencies=("numpy",),
         implementation_factory=RingLWEProtocol,
-        development_note=(
-            "Ring-LWE sobre Z_q[x]/(x^n+1) con secreto/error centered-binomial "
-            "y verificación por re-encriptación Fujisaki-Okamoto."
-        ),
+        development_note="Identificación Fiat-Shamir con abortos (NIZK en ROM) sobre Ring-LWE en Z_q[x]/(x^n+1).",
     ),
     ProtocolSpec(
         protocol_id="lwr",
@@ -89,10 +80,7 @@ _PROTOCOL_SPECS: tuple[ProtocolSpec, ...] = (
         aliases=("lwrounding", "lwr_auth"),
         declared_dependencies=("numpy",),
         implementation_factory=LWRProtocol,
-        development_note=(
-            "Learning With Rounding con secreto uniforme, rounding q->p y "
-            "verificación por re-encriptación Fujisaki-Okamoto."
-        ),
+        development_note="Identificación Fiat-Shamir con abortos (NIZK en ROM) sobre Learning With Rounding.",
     ),
     ProtocolSpec(
         protocol_id="proposed_lwe",

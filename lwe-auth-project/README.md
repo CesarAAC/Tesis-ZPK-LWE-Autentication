@@ -3,10 +3,10 @@
 Repositorio experimental para comparar, bajo una metodología común y reproducible, seis candidatos de autenticación:
 
 1. `ecdsa` — ECDSA P-256, baseline tradicional.
-2. `standard_lwe` — autenticación basada en LWE estándar (Regev, secreto uniforme en Z_q).
-3. `binary_lwe` — variante LWE con secreto binario (Regev, secreto en {0,1}^n).
-4. `ring_lwe` — autenticación Ring-LWE sobre $Z_q[x]/(x^n+1)$.
-5. `lwr` — autenticación Learning With Rounding (LWR).
+2. `standard_lwe` — identificación Fiat–Shamir con abortos (NIZK) sobre LWE (secreto binomial centrado).
+3. `binary_lwe` — identificación Fiat–Shamir con abortos (NIZK) sobre LWE con secreto binario.
+4. `ring_lwe` — identificación Fiat–Shamir con abortos (NIZK) sobre Ring-LWE en $Z_q[x]/(x^n+1)$.
+5. `lwr` — identificación Fiat–Shamir con abortos (NIZK) sobre Learning With Rounding (LWR).
 6. `proposed_lwe` — protocolo diseñado en la tesis (**pendiente**).
 
 El objetivo del repositorio no es producir un “ganador” automático. El framework registra evidencia comparable sobre rendimiento, memoria, tamaños serializados, comunicación, almacenamiento, comportamiento proyectado bajo distintas redes, complejidad de implementación y metadatos de reproducibilidad. Las afirmaciones de seguridad, madurez y arquitectura se almacenan aparte y deben incluir evidencia explícita.
@@ -18,9 +18,10 @@ El objetivo del repositorio no es producir un “ganador” automático. El fram
 ## Estado actual
 
 - Implementados completamente: `ecdsa`, `standard_lwe`, `binary_lwe`, `ring_lwe` y `lwr`.
-- `backend/crypto_core/lwe/` contiene primitivas reutilizables (muestreo con CSPRNG, codificación, Regev, aritmética negacíclica Ring-LWE, rounding LWR y helpers Sage de keygen); no son protocolos de autenticación por sí solas.
+- Los cuatro candidatos de retículos son identificación **Fiat–Shamir con abortos**: pruebas no interactivas de conocimiento cero en el modelo de oráculo aleatorio programable; ver [Candidatos de retículos](#candidatos-de-retículos-identificación-fiatshamir-con-abortos).
+- `backend/crypto_core/lwe/` contiene primitivas reutilizables (muestreo con CSPRNG, codificación, aritmética negacíclica, redondeo LWR y helpers Sage de keygen); no son protocolos de autenticación por sí solas.
 - `proposed_lwe` permanece reservado en el catálogo con `implementation_factory=None` y falla de forma cerrada.
-- Los parámetros por defecto de `ring_lwe` y `lwr` son parámetros experimentales del prototipo; su nivel de seguridad debe estimarse y documentarse por separado antes de usarlos como evidencia de tesis.
+- Los parámetros por defecto son experimentales; su nivel de seguridad debe estimarse y documentarse por separado antes de usarlos como evidencia de tesis.
 - Ya están preparados el contrato común, benchmark runner, pruebas de conformidad, mediciones, exportación JSON/CSV, persistencia PostgreSQL, proyecciones de red y formatos para assessments cualitativos y estimaciones de seguridad.
 
 ---
@@ -205,44 +206,75 @@ Las operaciones no deben modificar estructuras de entrada como `system_parameter
 
 ---
 
-# Candidatos LWE implementados (`standard_lwe` y `binary_lwe`)
+# Candidatos de retículos: identificación Fiat–Shamir con abortos
 
-Ambos viven en `backend/crypto_core/protocols/regev_lwe.py` y comparten exactamente la misma plantilla de protocolo; solo cambia la distribución del secreto `s`. Así, cualquier diferencia medida entre ambos se atribuye a esa decisión. Las primitivas están en `backend/crypto_core/lwe/` (`sampling.py`, `codec.py`, `regev.py`).
+`standard_lwe`, `binary_lwe`, `ring_lwe` y `lwr` usan **el mismo sistema de prueba** (`backend/crypto_core/protocols/lattice_zk.py`): el esquema de identificación *Fiat–Shamir con abortos* de Lyubashevsky (2012), en su variante LWE (se envían `z1` y `z2`; la clave tiene `ℓ` columnas secretas). **No es Dilithium:** no usa la descomposición HighBits/LowBits de `w`, hints, la segunda condición de rechazo ni la clave pública comprimida; solo los tamaños de parámetros siguen a Dilithium2. Solo cambia la relación lineal probada, así que las diferencias medidas se atribuyen al supuesto de retículos.
+
+## Relación y mapeo al contrato
+
+El probador posee `(S, E)` cortos tales que `A·S + E = B̃ (mod q)`; lo que la prueba garantiza se precisa en [Propiedades](#propiedades-enunciadas-con-precisión).
+
+| Candidato | Archivo | Setup compartido | Secreto `S` | Error `E` | `B̃` (clave pública elevada a `Z_q`) |
+|---|---|---|---|---|---|
+| `standard_lwe` | `lwe_zk.py` | `A ∈ Z_q^{m×n}` | binomial centrado `η`, `n×ℓ` | binomial centrado `η` | `B = A·S + E` |
+| `binary_lwe` | `lwe_zk.py` | `A ∈ Z_q^{m×n}` | `{0,1}^{n×ℓ}` | binomial centrado `η` | `B = A·S + E` |
+| `lwr` | `lwr_auth.py` | `A ∈ Z_q^{m×n}` | binomial centrado `η`, `n×ℓ` | redondeo determinista, `‖E‖∞ ≤ q/2p` | `(q/p)·B`, con `B = ⌊(p/q)·A·S⌉ mod p` |
+| `ring_lwe` | `ring_lwe.py` | `a ∈ Z_q[x]/(xⁿ+1)` | binomial centrado `η` | binomial centrado `η` | `b = a·s + e` |
+
+Los tres candidatos matriciales comparten `matrix_lwe_zk.py`.
 
 ```text
-Setup (por despliegue):
-    A <- U(Z_q^{m x n})                      -> system_parameters (+ parámetros efectivos)
-
-Enrollment (por usuario):
-    s <- U(Z_q^n)   (standard_lwe)   |   s <- U({0,1}^n)   (binary_lwe)
-    e <- Gaussiana discreta(sigma)^m
-    b = A s + e mod q                        -> public_key = {b}, private_key = {s, b}
-
-Autenticación (por sesión):
-    Verificador: nonce, mu <- {0,1}^k
-                 R = SHAKE-256(H(nonce, H(pk), mu)) en {0,1}^{k x m}
-                 U = R A,  V = R b + mu * floor(q/2)   (cifrado Regev bit a bit)
-                 challenge = {nonce, U, V, commitment = H(params, H(pk), nonce, U, V, mu)}
-    Probador:    mu' = Dec_s(U, V); re-deriva R' y re-cifra;
-                 responde mu' solo si (U', V') == (U, V) y el commitment coincide
-    Verificador: acepta si H(params, H(pk), nonce, U, V, mu') == commitment
+generate_challenge  (verificador):  nonce <- 32 bytes aleatorios
+solve_challenge     (probador):     repetir:
+                                        y1, y2 <- U([-γ, γ])                 (máscaras)
+                                        w  = A·y1 + y2 mod q                  (compromiso)
+                                        c~ = H(params, H(pk), nonce, w)       (Fiat–Shamir)
+                                        c  = ternario disperso(c~), peso κ
+                                        z1 = y1 + S·c,  z2 = y2 + E·c
+                                    hasta que ‖z_i‖∞ <= γ - β_i   (β_i = κ·‖testigo_i‖∞)
+                                    respuesta = (c~, z1, z2)
+verify_response     (verificador):  normas OK  y  H(params, H(pk), nonce, A·z1 + z2 - B̃·c) == c~
 ```
 
-Decisiones de diseño:
+## Propiedades (enunciadas con precisión)
 
-- **Setup compartido.** `A` es material público común al despliegue; por usuario solo se almacena `b`. La clave privada incluye `b` porque el probador necesita re-cifrar (igual que Kyber/Frodo incluyen la clave pública en la privada).
-- **Chequeo Fujisaki–Okamoto en el probador.** Sin él, un verificador malicioso podría enviar cifrados manipulados y usar al probador como oráculo de desencriptación para recuperar `s`.
-- **El desafío es estado de sesión del verificador.** `verify_response()` confía en el commitment del desafío emitido; en un despliegue real el servidor conserva su copia del desafío y nunca acepta uno enviado por el cliente. El commitment permite guardar el desafío sin almacenar `mu` en claro.
-- **`m` mínimo forzado.** `resolve_parameters()` exige `m >= (n + 1) * ceil(log2 q) + 256` (leftover hash lemma). Con menos muestras `R A` es un subset-sum de baja densidad resoluble por reducción de retículos y `mu` se obtendría sin la clave. Si no se indica `m`, se deriva ese mínimo y se registra explícitamente.
-- **Corrección.** Se exige `floor(q/4) > 10 · sigma · sqrt(m)`; un fallo de desencriptación rechazaría a un usuario legítimo.
-- **Aleatoriedad.** Todo muestreo usa `secrets.token_bytes`; la aleatoriedad de cifrado se deriva con SHAKE-256 solo para permitir la re-encriptación. NumPy se usa únicamente para aritmética (`m · (q − 1) < 2^53` garantiza que el producto en float64/BLAS sea exacto).
-- **Serialización.** Coeficientes como uint16 little-endian en Base64; el secreto binario se empaqueta a 1 bit por coeficiente.
+No se afirma nada más allá de lo siguiente.
 
-Parámetros por defecto: `n = 640`, `q = 2^15`, `sigma = 2.8` (inspirados en FrodoKEM-640), `m = 9871`, `k = message_bits = 128`. Ajustables: `n`, `m`, `q`, `sigma`, `message_bits`; el resto queda fijo y se rechaza cualquier otro valor.
+- **Conocimiento cero.** El protocolo interactivo subyacente es *non-abort special honest-verifier zero knowledge*. Su versión Fiat–Shamir es un **NIZK en el modelo de oráculo aleatorio programable**: el simulador elige `c~`, deriva `c`, elige `z` uniforme en `[-(γ-β), γ-β]`, fija `w = A·z1 + z2 − B̃·c` y programa `H(params, H(pk), nonce, w) = c~`. Coincide con las transcripciones reales porque `‖testigo·c‖∞ ≤ β`: un `z` aceptado es uniforme en esa caja sea cual sea el secreto, y la probabilidad de aceptación por intento depende solo de `γ`, `β` y las dimensiones. Los intentos abortados nunca se envían. **No analizado:** el modelo de oráculo aleatorio cuántico (QROM) ni canales laterales de tiempo.
+- **Argumento de conocimiento de una relación relajada, no de `(S, E)`.** Dos transcripciones aceptadas con el mismo `w` y `c ≠ c'` dan `(z1 − z1', z2 − z2', c − c')` cortos con `A·(z1 − z1') + (z2 − z2') = B̃·(c − c') (mod q)` (*forking lemma*). Ese testigo no es `S` ni `E` (un `S` binario no sigue siendo binario). La seguridad contra suplantación se apoya en que la clave sea pseudoaleatoria (LWE, Ring-LWE o LWR) y en la dificultad de SIS para `[A | I | −B̃]` con norma `2·(γ − β)`; ambas deben estimarse para los parámetros usados.
+- **Frescura y binding:** el nonce y `H(pk)` entran en el hash, por lo que una respuesta no verifica bajo otro desafío ni bajo otra clave pública.
+- **Verificación sin estado:** el verificador ya no necesita guardar el desafío completo, solo recordar qué nonces emitió para impedir replay entre sesiones.
+- **No es negable:** la prueba es no interactiva y por lo tanto transferible (como una firma).
+- Las pruebas automáticas incluyen chequeos estadísticos de que `z` es uniforme en la caja; no constituyen una demostración formal.
 
-> **Advertencia:** estos parámetros son un punto de partida, no una demostración de seguridad. Para el mismo `n`, el secreto binario es más débil que el uniforme. La seguridad efectiva de cada conjunto debe estimarse (p. ej. con lattice-estimator) y registrarse con `security_cli` antes de usar resultados en la tesis.
+## Decisiones de diseño
 
-Orden de magnitud con los valores por defecto: `system_parameters` ≈ 16.8 MB, clave pública ≈ 26 KB, desafío ≈ 219 KB, respuesta ≈ 38 B.
+- **Secreto corto.** Fiat–Shamir con abortos requiere un testigo corto para enmascararlo. Por eso `standard_lwe` y `lwr` usan secreto binomial centrado (LWE en forma normal, misma familia de dificultad) en lugar de uniforme en `Z_q`.
+- **LWR como relación exacta.** Con `x = A·S mod q` y `B = ⌊(p·x + q/2)/q⌋ mod p`, el error determinista `E = (q/p)·B − x` (centrado mod `q`) cumple `A·S + E = B̃` con `‖E‖∞ ≤ q/2p`, incluso cuando el redondeo llega a `p` y se reduce a 0; `test_rounding_error_satisfies_lifted_relation` verifica relación y cota. El conocimiento cero solo necesita esa cota, no la distribución de `E`. La clave es una instancia **LWR con secreto corto**, no LWE: su dificultad debe estimarse como LWR; tratar el redondeo como ruido LWE de desviación ≈ `(q/p)/√12` es solo una heurística.
+- **ℓ columnas secretas en los candidatos matriciales.** Con un solo vector secreto el espacio de desafíos es pequeño y harían falta ~128 repeticiones. Con `ℓ = 128` columnas y un desafío ternario de peso `κ = 31` el espacio es de 129.6 bits en una sola ronda. `ring_lwe` no lo necesita: el desafío es un polinomio con `κ = 16` coeficientes `±1` (131.6 bits).
+- **Módulo grande.** La solidez exige `q ≫ γ`; se valida `q >= 16·γ`. Con `γ = 2^17` esto obliga a `q ≈ 2^23` (codificación de 4 bytes por coeficiente).
+- **Validación de parámetros.** `resolve_parameters()` rechaza espacios de desafío menores a 128 bits, `γ <= β` (no ocultaría el secreto) y probabilidades de aceptación por intento menores a 5 %.
+- **Aleatoriedad.** Máscaras y claves usan `secrets.token_bytes`; el desafío se expande desde `c~` con SHAKE-256 (muestreado como `SampleInBall` de Dilithium).
+- **Serialización.** Ancho mínimo por coeficiente (1, 2 o 4 bytes, little-endian, Base64); `z` se codifica con desplazamiento, por lo que cualquier coeficiente fuera de la cota se rechaza al decodificar. El secreto binario se empaqueta a 1 bit.
+- `ring_lwe` usa convolución negacíclica directa `O(n²)`, no NTT.
+
+## Parámetros por defecto y tamaños
+
+| Candidato | Parámetros | Referencia |
+|---|---|---|
+| `standard_lwe`, `binary_lwe` | `n = m = 1024`, `q = 8380417`, `η = 2`, `ℓ = 128`, `κ = 31`, `γ = 2^17` | tamaños como Dilithium2 |
+| `lwr` | `n = m = 1024`, `q = 2^23`, `p = 2^20` (`‖E‖∞ ≤ 4`), `η = 2`, `ℓ = 128`, `κ = 31`, `γ = 2^17` | mismas dimensiones |
+| `ring_lwe` | `n = 1024`, `q = 8380417`, `η = 2`, `κ = 16`, `γ = 2^17` | tamaños como Dilithium2 |
+
+| | `system_parameters` | clave pública | clave privada | desafío | respuesta |
+|---|---|---|---|---|---|
+| `standard_lwe`, `lwr` | ≈ 5.6 MB | ≈ 700 KB | ≈ 350 KB | 56 B | ≈ 11 KB |
+| `binary_lwe` | ≈ 5.6 MB | ≈ 700 KB | ≈ 197 KB | 56 B | ≈ 11 KB |
+| `ring_lwe` | ≈ 6 KB | ≈ 5.5 KB | ≈ 2.8 KB | 56 B | ≈ 11 KB |
+
+> **Advertencia:** estos parámetros son un punto de partida, no una demostración de seguridad. La dificultad de LWE/LWR (en particular con secreto binario) y la solidez de la prueba deben estimarse (p. ej. con lattice-estimator) y registrarse con `security_cli` antes de usar resultados en la tesis.
+
+**Métrica de líneas de código.** `code_metrics.py` cuenta el archivo de la clase registrada más los archivos de sus clases base dentro de `crypto_core/` (excepto `interface.py`); por eso cada candidato incluye `lattice_zk.py` (y los matriciales también `matrix_lwe_zk.py`). Los módulos auxiliares solo importados (`crypto_core/lwe/`) no se cuentan.
 
 ---
 

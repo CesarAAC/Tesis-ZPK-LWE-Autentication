@@ -69,9 +69,14 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(verify_response.status_code, 200)
         self.assertEqual(verify_response.json(), {'is_valid': True})
 
-    def test_lwe_http_round_trip_uses_effective_parameters(self) -> None:
-        parameters = {'n': 64, 'q': 4096}
-        for protocol_name in ('standard_lwe', 'binary_lwe'):
+    def test_lattice_http_round_trip_uses_effective_parameters(self) -> None:
+        small_parameters = {
+            'standard_lwe': {'n': 128, 'm': 128},
+            'binary_lwe': {'n': 128, 'm': 128},
+            'lwr': {'n': 128, 'm': 128},
+            'ring_lwe': {'n': 256, 'kappa': 23},
+        }
+        for protocol_name, parameters in small_parameters.items():
             with self.subTest(protocol_name=protocol_name):
                 key_response = self.client.post(
                     '/api/v1/generate_keys',
@@ -79,10 +84,13 @@ class ApiContractTests(unittest.TestCase):
                 )
                 self.assertEqual(key_response.status_code, 200)
                 material = key_response.json()
-                self.assertEqual(material['effective_parameters']['m'], 65 * 12 + 256)
                 self.assertEqual(
                     material['system_parameters']['parameters'],
                     material['effective_parameters'],
+                )
+                self.assertEqual(
+                    material['effective_parameters']['proof_system'],
+                    'fiat_shamir_with_aborts',
                 )
 
                 challenge = self.client.post(
@@ -114,92 +122,12 @@ class ApiContractTests(unittest.TestCase):
                 )
                 self.assertEqual(verify_response.json(), {'is_valid': True})
 
-    def test_ring_lwe_http_round_trip(self) -> None:
-        parameters = {'n': 128, 'q': 12289, 'eta': 2, 'message_bits': 128}
+    def test_lattice_rejects_small_challenge_space_with_400(self) -> None:
         key_response = self.client.post(
             '/api/v1/generate_keys',
-            json={'protocol_name': 'ring_lwe', 'parameters': parameters},
-        )
-        self.assertEqual(key_response.status_code, 200)
-        material = key_response.json()
-        challenge_response = self.client.post(
-            '/api/v1/challenge',
-            json={
-                'protocol_name': 'ring_lwe',
-                'system_parameters': material['system_parameters'],
-                'public_key': material['public_key'],
-            },
-        )
-        self.assertEqual(challenge_response.status_code, 200)
-        challenge = challenge_response.json()['challenge']
-        solve_response = self.client.post(
-            '/api/v1/solve',
-            json={
-                'protocol_name': 'ring_lwe',
-                'system_parameters': material['system_parameters'],
-                'private_key': material['private_key'],
-                'challenge': challenge,
-            },
-        )
-        self.assertEqual(solve_response.status_code, 200)
-        response = solve_response.json()['response']
-        verify_response = self.client.post(
-            '/api/v1/verify',
-            json={
-                'protocol_name': 'ring_lwe',
-                'system_parameters': material['system_parameters'],
-                'public_key': material['public_key'],
-                'challenge': challenge,
-                'response': response,
-            },
-        )
-        self.assertEqual(verify_response.json(), {'is_valid': True})
-
-    def test_lwr_http_round_trip(self) -> None:
-        parameters = {'n': 64, 'q': 4096, 'p': 1024, 'message_bits': 128}
-        key_response = self.client.post(
-            '/api/v1/generate_keys',
-            json={'protocol_name': 'lwr', 'parameters': parameters},
-        )
-        self.assertEqual(key_response.status_code, 200)
-        material = key_response.json()
-        self.assertEqual(material['effective_parameters']['m'], 65 * 12 + 256)
-        challenge = self.client.post(
-            '/api/v1/challenge',
-            json={
-                'protocol_name': 'lwr',
-                'system_parameters': material['system_parameters'],
-                'public_key': material['public_key'],
-            },
-        ).json()['challenge']
-        response = self.client.post(
-            '/api/v1/solve',
-            json={
-                'protocol_name': 'lwr',
-                'system_parameters': material['system_parameters'],
-                'private_key': material['private_key'],
-                'challenge': challenge,
-            },
-        ).json()['response']
-        verify_response = self.client.post(
-            '/api/v1/verify',
-            json={
-                'protocol_name': 'lwr',
-                'system_parameters': material['system_parameters'],
-                'public_key': material['public_key'],
-                'challenge': challenge,
-                'response': response,
-            },
-        )
-        self.assertEqual(verify_response.json(), {'is_valid': True})
-
-    def test_lwe_rejects_insecure_parameters_with_400(self) -> None:
-        key_response = self.client.post(
-            '/api/v1/generate_keys',
-            json={'protocol_name': 'standard_lwe', 'parameters': {'n': 64, 'q': 4096, 'm': 128}},
+            json={'protocol_name': 'standard_lwe', 'parameters': {'kappa': 5}},
         )
         self.assertEqual(key_response.status_code, 400)
-
 
 if __name__ == '__main__':
     unittest.main()

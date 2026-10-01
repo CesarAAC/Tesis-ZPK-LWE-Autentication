@@ -124,3 +124,40 @@ def derive_binary_matrix(seed: bytes, shape: tuple[int, ...]) -> np.ndarray:
     stream = hashlib.shake_256(seed).digest((count + 7) // 8)
     raw = np.frombuffer(stream, dtype=np.uint8)
     return np.unpackbits(raw, bitorder="little")[:count].astype(np.int64).reshape(shape)
+
+
+def sample_uniform_box(shape: tuple[int, ...], bound: int) -> np.ndarray:
+    """Sample coefficients uniformly in [-bound, bound] with the OS CSPRNG."""
+    return sample_uniform_mod_q(shape, 2 * bound + 1) - bound
+
+
+def derive_sparse_ternary(seed: bytes, length: int, weight: int) -> np.ndarray:
+    """Expand ``seed`` into a vector in {-1, 0, 1}^length with exactly ``weight`` nonzeros.
+
+    Fisher-Yates placement as in Dilithium's SampleInBall, read from a
+    SHAKE-256 stream: ``weight`` sign bits first, then 16-bit positions with
+    rejection sampling to avoid modulo bias.
+    """
+    if not 0 < weight <= length < 1 << 16:
+        raise ValueError("weight must be in (0, length] and length < 2^16")
+    sign_bytes = (weight + 7) // 8
+    stream_length = sign_bytes + 4 * weight
+    stream = hashlib.shake_256(seed).digest(stream_length)
+    signs = np.unpackbits(np.frombuffer(stream[:sign_bytes], dtype=np.uint8), bitorder="little")
+    offset = sign_bytes
+    challenge = np.zeros(length, dtype=np.int64)
+    for index, position in enumerate(range(length - weight, length)):
+        limit = ((1 << 16) // (position + 1)) * (position + 1)
+        while True:
+            if offset + 2 > len(stream):
+                # SHAKE is an XOF: a longer digest extends the same stream.
+                stream_length *= 2
+                stream = hashlib.shake_256(seed).digest(stream_length)
+            candidate = int.from_bytes(stream[offset:offset + 2], "little")
+            offset += 2
+            if candidate < limit:
+                break
+        chosen = candidate % (position + 1)
+        challenge[position] = challenge[chosen]
+        challenge[chosen] = 1 - 2 * int(signs[index])
+    return challenge

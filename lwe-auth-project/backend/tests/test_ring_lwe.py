@@ -1,112 +1,74 @@
-import copy
 import unittest
 
 import numpy as np
 
-from crypto_core.exceptions import InvalidProtocolDataError
-from crypto_core.lwe import codec, ring, sampling
+from crypto_core.lwe import codec, ring
 from crypto_core.protocols.ring_lwe import RingLWEProtocol
+from tests.lattice_zk_cases import LatticeZKProtocolCases
+
+SMALL_PARAMETERS = {"n": 256, "kappa": 23}
 
 
-class RingLWEPrimitiveTests(unittest.TestCase):
-    def test_negacyclic_multiplication_reduces_x_n_to_minus_one(self) -> None:
+class RingLWEProtocolTests(LatticeZKProtocolCases, unittest.TestCase):
+    protocol_class = RingLWEProtocol
+    small_parameters = SMALL_PARAMETERS
+    alternative_parameters = {**SMALL_PARAMETERS, "kappa": 24}
+    shared_field = "a"
+    public_field = "b"
+    witness_fields = ("s", "e")
+    expected_defaults = {
+        "n": 1024,
+        "q": 8380417,
+        "eta": 2,
+        "kappa": 16,
+        "gamma": 1 << 17,
+        "ring": "Z_q[x]/(x^n+1)",
+    }
+    invalid_overrides = (
+        {"n": 384},
+        {"n": 32},
+        {"n": 8192},
+        {"eta": 0},
+        {"m": 1024},
+        {"polynomial_multiplication": "ntt"},
+    )
+
+    def test_key_satisfies_the_ring_lwe_relation(self) -> None:
+        n, q, eta = self.parameters["n"], self.parameters["q"], self.parameters["eta"]
+        polynomial_a = codec.decode_unsigned(self.system_parameters["a"], "a", (n,), q)[1]
+        public = codec.decode_unsigned(self.public_key["b"], "b", (n,), q)[1]
+        secret = codec.decode_signed(self.private_key["s"], "s", (n,), eta)
+        error = codec.decode_signed(self.private_key["e"], "e", (n,), eta)
+        self.assertTrue(
+            np.array_equal((ring.negacyclic_multiply(polynomial_a, secret, q) + error) % q, public)
+        )
+
+    def test_challenge_is_a_single_ring_element(self) -> None:
+        context = self.protocol._context(self.system_parameters)
+        self.assertEqual(self.protocol._challenge_shape(context), (256, 23))
+
+
+class NegacyclicMultiplicationTests(unittest.TestCase):
+    def test_matches_reference_reduction_modulo_x_n_plus_1(self) -> None:
+        rng = np.random.default_rng(1)
+        n, q = 16, 97
+        left = rng.integers(0, q, n)
+        right = rng.integers(-3, 4, n)
+        expected = np.zeros(n, dtype=np.int64)
+        for i in range(n):
+            for j in range(n):
+                sign = 1 if i + j < n else -1
+                expected[(i + j) % n] += sign * left[i] * right[j]
+        self.assertTrue(np.array_equal(ring.negacyclic_multiply(left, right, q), expected % q))
+
+    def test_x_to_the_n_equals_minus_one(self) -> None:
         left = np.zeros(8, dtype=np.int64)
         right = np.zeros(8, dtype=np.int64)
         left[-1] = 1
         right[1] = 1
-        product = ring.negacyclic_multiply(left, right, 17)
         expected = np.zeros(8, dtype=np.int64)
         expected[0] = 16
-        self.assertTrue(np.array_equal(product, expected))
-
-    def test_derived_centered_binomial_is_deterministic_and_bounded(self) -> None:
-        first = sampling.derive_centered_binomial(b"seed", (512,), 2)
-        second = sampling.derive_centered_binomial(b"seed", (512,), 2)
-        other = sampling.derive_centered_binomial(b"other", (512,), 2)
-        self.assertTrue(np.array_equal(first, second))
-        self.assertFalse(np.array_equal(first, other))
-        self.assertGreaterEqual(int(first.min()), -2)
-        self.assertLessEqual(int(first.max()), 2)
-
-
-class RingLWEProtocolTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.protocol = RingLWEProtocol()
-        self.parameters = self.protocol.resolve_parameters(
-            {"n": 128, "q": 12289, "eta": 2, "message_bits": 128}
-        )
-        self.system_parameters = self.protocol.generate_system_parameters(**self.parameters)
-        self.public_key, self.private_key = self.protocol.generate_keypair(
-            self.system_parameters, **self.parameters
-        )
-
-    def test_effective_parameters_are_explicit(self) -> None:
-        self.assertEqual(self.system_parameters["parameters"], self.parameters)
-        self.assertEqual(self.parameters["ring"], "Z_q[x]/(x^n+1)")
-        self.assertEqual(self.parameters["secret_distribution"], "centered_binomial")
-
-    def test_round_trip_is_valid(self) -> None:
-        challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
-        response = self.protocol.solve_challenge(
-            self.system_parameters, self.private_key, challenge
-        )
-        self.assertTrue(
-            self.protocol.verify_response(
-                self.system_parameters, self.public_key, challenge, response
-            )
-        )
-
-    def test_challenge_modified_is_rejected_by_prover(self) -> None:
-        challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
-        tampered = copy.deepcopy(challenge)
-        u = codec.decode_coefficients(
-            tampered["u"], "u", (self.parameters["n"],), self.parameters["q"]
-        )
-        u[0] = (u[0] + 1) % self.parameters["q"]
-        tampered["u"] = codec.encode_coefficients(u)
-        with self.assertRaises(InvalidProtocolDataError):
-            self.protocol.solve_challenge(
-                self.system_parameters, self.private_key, tampered
-            )
-
-    def test_response_is_bound_to_public_key(self) -> None:
-        challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
-        response = self.protocol.solve_challenge(
-            self.system_parameters, self.private_key, challenge
-        )
-        other_public, _ = self.protocol.generate_keypair(
-            self.system_parameters, **self.parameters
-        )
-        self.assertFalse(
-            self.protocol.verify_response(
-                self.system_parameters, other_public, challenge, response
-            )
-        )
-
-    def test_invalid_ring_dimension_is_rejected(self) -> None:
-        with self.assertRaises(InvalidProtocolDataError):
-            self.protocol.resolve_parameters(
-                {"n": 192, "q": 12289, "eta": 2, "message_bits": 128}
-            )
-
-    def test_message_must_fit_in_ring(self) -> None:
-        with self.assertRaises(InvalidProtocolDataError):
-            self.protocol.resolve_parameters(
-                {"n": 128, "q": 12289, "eta": 2, "message_bits": 256}
-            )
-
-    def test_malformed_small_secret_is_rejected(self) -> None:
-        malformed = copy.deepcopy(self.private_key)
-        secret = codec.decode_coefficients(
-            malformed["s"], "s", (self.parameters["n"],), self.parameters["q"]
-        )
-        secret[0] = 10
-        malformed["s"] = codec.encode_coefficients(secret)
-        challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
-        with self.assertRaises(InvalidProtocolDataError):
-            self.protocol.solve_challenge(
-                self.system_parameters, malformed, challenge
-            )
+        self.assertTrue(np.array_equal(ring.negacyclic_multiply(left, right, 17), expected))
 
 
 if __name__ == "__main__":

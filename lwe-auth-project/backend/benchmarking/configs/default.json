@@ -14,31 +14,39 @@
   "protocol_parameters": {
     "ecdsa": {},
     "standard_lwe": {
-      "n": 640,
-      "m": 9871,
-      "q": 32768,
-      "sigma": 2.8,
-      "message_bits": 128
+      "n": 1024,
+      "m": 1024,
+      "ell": 128,
+      "kappa": 31,
+      "gamma": 131072,
+      "eta": 2,
+      "q": 8380417
     },
     "binary_lwe": {
-      "n": 640,
-      "m": 9871,
-      "q": 32768,
-      "sigma": 2.8,
-      "message_bits": 128
+      "n": 1024,
+      "m": 1024,
+      "ell": 128,
+      "kappa": 31,
+      "gamma": 131072,
+      "eta": 2,
+      "q": 8380417
     },
     "ring_lwe": {
-      "n": 512,
-      "q": 12289,
+      "n": 1024,
+      "q": 8380417,
       "eta": 2,
-      "message_bits": 128
+      "kappa": 16,
+      "gamma": 131072
     },
     "lwr": {
-      "n": 640,
-      "m": 9871,
-      "q": 32768,
-      "p": 4096,
-      "message_bits": 128
+      "n": 1024,
+      "m": 1024,
+      "ell": 128,
+      "kappa": 31,
+      "gamma": 131072,
+      "eta": 2,
+      "q": 8388608,
+      "p": 1048576
     }
   },
   "network_scenarios": [

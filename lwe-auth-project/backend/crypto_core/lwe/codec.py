@@ -89,3 +89,58 @@ def decode_bits(value: Any, field_name: str, count: int) -> np.ndarray:
             f"'{field_name}' contiene bits de relleno distintos de cero."
         )
     return bits[:count].astype(np.int64)
+
+
+_WIDTH_DTYPES = {1: "<u1", 2: "<u2", 4: "<u4"}
+
+
+def width_for_range(size: int) -> int:
+    """Smallest supported byte width able to hold values in [0, size)."""
+    for width in (1, 2, 4):
+        if size <= 1 << (8 * width):
+            return width
+    raise ValueError("El rango excede 32 bits por coeficiente.")
+
+
+def unsigned_bytes(values: np.ndarray, modulus: int) -> bytes:
+    """Pack values in [0, modulus) with the narrowest little-endian width."""
+    dtype = _WIDTH_DTYPES[width_for_range(modulus)]
+    return np.ascontiguousarray(values, dtype=dtype).tobytes()
+
+
+def encode_unsigned(values: np.ndarray, modulus: int) -> str:
+    return encode_bytes(unsigned_bytes(values, modulus))
+
+
+def decode_unsigned(
+    value: Any,
+    field_name: str,
+    shape: tuple[int, ...],
+    modulus: int,
+) -> tuple[bytes, np.ndarray]:
+    """Return raw bytes and int64 values, rejecting anything outside [0, modulus)."""
+    width = width_for_range(modulus)
+    count = int(np.prod(shape))
+    raw = decode_fixed_bytes(value, field_name, width * count)
+    values = np.frombuffer(raw, dtype=_WIDTH_DTYPES[width]).astype(np.int64).reshape(shape)
+    if values.size and int(values.max()) >= modulus:
+        raise InvalidProtocolDataError(
+            f"'{field_name}' contiene coeficientes fuera de rango."
+        )
+    return raw, values
+
+
+def encode_signed(values: np.ndarray, bound: int) -> str:
+    """Encode values in [-bound, bound] as unsigned offsets value + bound."""
+    return encode_unsigned(np.asarray(values, dtype=np.int64) + bound, 2 * bound + 1)
+
+
+def decode_signed(
+    value: Any,
+    field_name: str,
+    shape: tuple[int, ...],
+    bound: int,
+) -> np.ndarray:
+    """Decode values in [-bound, bound]; any larger magnitude is rejected."""
+    _, offsets = decode_unsigned(value, field_name, shape, 2 * bound + 1)
+    return offsets - bound
