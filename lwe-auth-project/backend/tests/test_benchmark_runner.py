@@ -61,6 +61,48 @@ class BenchmarkRunnerTests(unittest.TestCase):
         ]
         self.assertEqual(setup_sizes, [0.0, 0.0, 0.0])
 
+    def test_memory_phase_measures_accepted_verifications_for_a_stateful_verifier(self) -> None:
+        # proposed_lwe keeps a spent-ticket log: verifying the same response twice is
+        # a replay. The runner must verify a fresh response each time, and it raises
+        # if a measured verification is rejected.
+        config = BenchmarkConfig(
+            warmup_iterations=1,
+            timing_iterations=2,
+            authentication_key_sets=1,
+            memory_iterations=3,
+            cooldown_seconds_between_protocols=0,
+            randomize_protocol_order=False,
+            protocol_parameters={"proposed_lwe": {}},
+        )
+        result = BenchmarkRunner(config).run_protocol(get_protocol_spec("proposed_lwe"))
+        self.assertTrue(all(result.conformance_checks.values()))
+        for operation in ("setup", "keygen", "challenge", "response", "verify", "authentication"):
+            samples = [
+                item
+                for item in result.measurements
+                if item.category == "memory"
+                and item.operation == operation
+                and item.metric_name == "peak_python_alloc"
+            ]
+            self.assertEqual(len(samples), 3, operation)
+
+    def test_memory_phase_still_covers_stateless_protocols(self) -> None:
+        config = BenchmarkConfig(
+            warmup_iterations=0,
+            timing_iterations=1,
+            memory_iterations=2,
+            cooldown_seconds_between_protocols=0,
+            randomize_protocol_order=False,
+            protocol_parameters={"ecdsa": {}},
+        )
+        result = BenchmarkRunner(config).run_protocol(get_protocol_spec("ecdsa"))
+        verify_samples = [
+            item
+            for item in result.measurements
+            if item.category == "memory" and item.operation == "verify"
+        ]
+        self.assertEqual(len(verify_samples), 2 * 3)
+
     def test_experiment_records_config_fingerprint_and_timestamps(self) -> None:
         config = BenchmarkConfig(
             warmup_iterations=0,

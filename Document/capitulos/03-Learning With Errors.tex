@@ -1,0 +1,368 @@
+\subsection{Learning With Errors (LWE)}
+
+\subsubsection{Introducción a la Criptografía Basada en Retículos}
+
+\paragraph{Definición Matemática de Retículo y Geometría Discreta}
+
+En el ámbito del álgebra lineal y la geometría discreta, un retículo (o \textit{lattice}) $\Lambda$ en el espacio euclídeo $m$-dimensional $\mathbb{R}^m$ se define formalmente como un subgrupo discreto del espacio vectorial real generado por todas las combinaciones lineales enteras de $k$ vectores linealmente independientes $\mathbf{b}_1, \mathbf{b}_2, \dots, \mathbf{b}_k \in \mathbb{R}^m$ (con $m \ge k$) \cite{huang2018lattice, ma2026laasso}:
+
+\begin{equation}
+\Lambda = \mathcal{L}(\mathbf{B}) = \left\{ \sum_{i=1}^{k} c_i \mathbf{b}_i \;\middle|\; c_i \in \mathbb{Z}, \, \mathbf{b}_1, \dots, \mathbf{b}_k \in \mathbb{R}^m \right\}
+\end{equation}
+
+donde $\mathbf{B} = [\mathbf{b}_1 | \mathbf{b}_2 | \dots | \mathbf{b}_k] \in \mathbb{R}^{m \times k}$ representa la matriz de base del retículo, mientras que los enteros $k$ y $m$ denotan el rango y la dimensión del retículo, respectivamente \cite{huang2018lattice}. Cuando el rango iguala a la dimensión ($k = m$), se afirma que el retículo es de rango completo (\textit{full-rank}) \cite{ma2026laasso}. Geométricamente, un retículo constituye una estructura periódica discreta e infinita sobre el espacio vectorial \cite{huang2018lattice}.
+
+En el diseño de protocolos criptográficos poscuánticos, adquieren especial relevancia los retículos modulares discretos definidos sobre el anillo de enteros $\mathbb{Z}_q = \mathbb{Z}/q\mathbb{Z}$ (donde $q$ es un módulo primo o entero), conocidos como retículos $q$-arios (\textit{$q$-ary lattices}) \cite{huang2018lattice, an2023secrethandshakes}. Para una matriz modular $\mathbf{A} \in \mathbb{Z}_q^{n \times m}$, se definen los siguientes conjuntos duales fundamentales:
+
+\begin{align}
+\Lambda_q^\perp(\mathbf{A}) &= \left\{ \mathbf{y} \in \mathbb{Z}^m \;\middle|\; \mathbf{A}\mathbf{y} \equiv \mathbf{0} \pmod q \right\} \label{eq:q_ary_perp} \\
+\Lambda_q(\mathbf{A}) &= \left\{ \mathbf{y} \in \mathbb{Z}^m \;\middle|\; \mathbf{y} \equiv \mathbf{A}^T\mathbf{s} \pmod q, \, \text{para algún } \mathbf{s} \in \mathbb{Z}_q^n \right\}
+\end{align}
+
+así como el retículo desplazado $\Lambda_u(\mathbf{A}) = \{ \mathbf{x} \in \mathbb{Z}^m \mid \mathbf{A}\mathbf{x} \equiv \mathbf{u} \pmod q \}$ para un vector $u \in \mathbb{Z}_q^n$ \cite{an2023secrethandshakes}. Asimismo, sobre anillos ciclotómicos $\mathcal{R}_q = \mathbb{Z}_q[X]/\langle X^d + 1 \rangle$, la estructura puede extenderse a retículos ideales o de tipo NTRU $\Lambda_{h,q} = \{ (u,v) \in \mathcal{R}_q \times \mathcal{R}_q \mid u + vh \equiv 0 \pmod q \}$ \cite{ma2026laasso}.
+
+\paragraph{Problemas Duros del Peor Caso en Retículos}
+
+La solidez de la criptografía basada en retículos reposa sobre la intratabilidad computacional de diversos problemas geométricos multidimensionales \cite{huang2018lattice, rewal2023quantumsafe, ma2026laasso, an2023secrethandshakes}:
+
+\begin{itemize}
+    \item \textbf{Problema del Vector más Corto (Shortest Vector Problem - SVP):} Dada una base arbitraria $\mathbf{B}$ de un retículo $L$, el objetivo consiste en hallar el vector no nulo de menor norma euclídea posible en $L$ \cite{huang2018lattice}.
+    
+    \item \textbf{Problema del Vector más Cercano (Closest Vector Problem - CVP):} Dada una base $\mathbf{B}$ de un retículo $L$ y un vector objetivo $\mathbf{t} \notin L$, el objetivo es encontrar el vector del retículo $\mathbf{v} \in L$ más cercano a $\mathbf{t}$ \cite{huang2018lattice}.
+    
+    \item \textbf{Solución de Enteros Cortos (Short Integer Solution - SIS):} Dada una matriz distribuida uniformemente al azar $\mathbf{A} \in \mathbb{Z}_q^{n \times m}$ y un parámetro de cota de norma $\beta > 0$, el problema $\text{SIS}_{n,m,q,\beta}$ consiste en encontrar un vector no nulo $\mathbf{x} \in \mathbb{Z}^m \setminus \{\mathbf{0}\}$ tal que \cite{ma2026laasso, an2023secrethandshakes}:
+    \begin{equation}
+    \mathbf{A}\mathbf{x} \equiv \mathbf{0} \pmod q \quad \text{y} \quad \|\mathbf{x}\| \le \beta
+    \end{equation}
+    Resolver SIS equivale a hallar un vector corto en el retículo ortogonal $\Lambda_q^\perp(\mathbf{A})$ \cite{an2023secrethandshakes}.
+    
+    \item \textbf{Solución de Enteros Cortos en Módulos (Module-SIS - MSIS):} Es la extensión algebraica del problema SIS sobre anillos cociente $\mathcal{R}_q$. Dada una matriz de polinomios $\mathbf{A} \in \mathcal{R}_q^{n \times m}$ y un límite de norma $\beta$, se busca hallar un vector de polinomios $\mathbf{s} \in \mathcal{R}_q^m \setminus \{\mathbf{0}\}$ tal que $\mathbf{A}\mathbf{s} \equiv \mathbf{0} \pmod q$ con $0 < \|\mathbf{s}\| \le \beta$ \cite{ma2026laasso}.
+\end{itemize}
+
+\paragraph{Fundamento de Reducción del Peor Caso al Caso Promedio y Resistencia Cuántica}
+
+Los esquemas criptográficos tradicionales como RSA, ECC y ElGamal basan su seguridad en problemas algebraicos clásicos (factorización de enteros y logaritmo discreto) \cite{huang2018lattice, nguyen2019high, rewal2023quantumsafe, mukil2026implementing}. No obstante, en 1994, Peter Shor formuló un algoritmo cuántico capaz de resolver el logaritmo discreto y la factorización entera en tiempo polinomial $O(n^3)$, vulnerando la infraestructura de seguridad pre-cuántica \cite{huang2018lattice, rewal2023quantumsafe, mukil2026implementing}.
+
+Frente a esta amenaza, Ajtai (1996) introdujo la criptografía basada en retículos \cite{huang2018lattice, rewal2023quantumsafe}. Su propiedad más revolucionaria reside en las reducciones de seguridad del peor caso al caso promedio (\textit{worst-case to average-case reductions}) \cite{rewal2023quantumsafe, lai2025leaky, an2023secrethandshakes}: la capacidad de resolver instancias promedio elegidas al azar de problemas como SIS o LWE garantiza la capacidad de resolver instancias en el peor caso posible de problemas geométricos subyacentes como SVP o SIVP sobre cualquier retículo de alta dimensión \cite{rewal2023quantumsafe, an2023secrethandshakes, lai2025leaky}. Dado que no existen algoritmos cuánticos conocidos capaces de resolver las aproximaciones de SVP o CVP en tiempo subexponencial, los retículos ofrecen un fundamento matemático resistente a ataques de la era poscuántica \cite{huang2018lattice, nguyen2019high, rewal2023quantumsafe, ma2026laasso, mukil2026implementing, yang2025multiserver, lombardi2022postquantum}.
+
+
+\subsubsection{El Problema Learning with Errors (LWE) Estándar}
+
+\paragraph{Formulación Matemática: Versiones de Búsqueda y Decisión}
+
+El problema \textit{Learning with Errors} (LWE), introducido originalmente por Oded Regev \cite{regev2009lwe}, constituye una de las primitivas fundamentales de la criptografía basada en retículos poscuánticos \cite{mukil2026implementing, lai2025leaky}. Matemáticamente, LWE puede entenderse como el problema de resolver un sistema de ecuaciones lineales sobre determinado e ruidoso sobre el cuerpo/anillo finito $\mathbb{Z}_q = \mathbb{Z}/q\mathbb{Z}$, donde $q \ge 2$ representa un módulo entero \cite{regev2009lwe, yang2025multiserver}.
+
+Para definir formalmente el problema, sea $n \in \mathbb{N}$ la dimensión del vector secreto no revelado $\mathbf{s} \in \mathbb{Z}_q^n$, y sea $\chi$ una distribución de probabilidad con soporte sobre los enteros $\mathbb{Z}$ (frecuentemente una distribución Gaussiana discreta $\chi_\sigma$ de media cero y desviación estándar $\sigma$) \cite{nguyen2019high, yang2025multiserver, lai2025leaky}. Una muestra individual de LWE se genera seleccionando un vector de coeficientes uniformemente al azar $\mathbf{a} \leftarrow \mathbb{Z}_q^n$ y muestreando un escalar de ruido $e \leftarrow \chi$, produciendo el par $(\mathbf{a}, b) \in \mathbb{Z}_q^n \times \mathbb{Z}_q$ definido por:
+
+\begin{equation}
+b = \mathbf{a}^T \mathbf{s} + e \pmod q
+\end{equation}
+
+Cuando se recolectan $m$ muestras independientes en formato matricial, la matriz pública se denota como $\mathbf{A} = [\mathbf{a}_1 | \mathbf{a}_2 | \dots | \mathbf{a}_m] \in \mathbb{Z}_q^{n \times m}$ y el vector de errores aleatorios como $\mathbf{e} = (e_1, e_2, \dots, e_m)^T \leftarrow \chi^m$. El sistema completo de ecuaciones ruidosas se expresa algebraicamente como:
+
+\begin{equation}
+\mathbf{b}^T = \mathbf{s}^T \mathbf{A} + \mathbf{e}^T \pmod q
+\end{equation}
+
+El problema LWE se formaliza analíticamente en dos variantes computacionales fundamentales \cite{regev2009lwe, lombardi2022postquantum, lai2025leaky}:
+
+\begin{itemize}
+    \item \textbf{LWE en versión Búsqueda (Search-LWE):} Dada una matriz de coeficientes aleatorios $\mathbf{A} \in \mathbb{Z}_q^{n \times m}$ y el vector de muestras ruidosas $\mathbf{b}^T = \mathbf{s}^T \mathbf{A} + \mathbf{e}^T \pmod q$, el objetivo computacional consiste en determinar de forma exacta el vector secreto $\mathbf{s} \in \mathbb{Z}_q^n$.
+    
+    \item \textbf{LWE en versión Decisión (Decision-LWE):} El objetivo de un algoritmo probabilístico de tiempo polinomial (PPT) es distinguir con ventaja no despreciable entre la distribución de pares genuinos LWE $(\mathbf{A}, \mathbf{s}^T \mathbf{A} + \mathbf{e}^T \pmod q)$ y una distribución uniformemente aleatoria $(\mathbf{A}, \mathbf{u}^T) \in \mathbb{Z}_q^{n \times m} \times \mathbb{Z}_q^m$.
+\end{itemize}
+
+Intuición técnica: Sin la adición de la variable de error $e \leftarrow \chi$, el sistema lineal $\mathbf{b}^T = \mathbf{s}^T \mathbf{A} \pmod q$ sería un problema algebraico trivial resoluble mediante la eliminación Gaussiana clásica en tiempo polinomial $O(n^3)$. La introducción del ruido aleatorio acotado $e$ destruye la estructura algebraica lineal exacta del sistema, convirtiéndolo en un problema geométricamente intrincado de retículos multidimensionales \cite{regev2009lwe, mukil2026implementing}.
+
+\paragraph{Fundamentación Teórica: Reducción del Peor Caso al Caso Promedio}
+
+El aspecto teórico más relevante de LWE radica en la existencia de una reducción rigurosa que conecta la dureza del problema en el \textit{caso promedio} (average-case) con la intratabilidad de problemas geométricos de retículos en el \textit{peor caso} (worst-case) \cite{regev2009lwe, rewal2023quantumsafe, lai2025leaky}.
+
+Regev \cite{regev2009lwe} demostró formalmente mediante una reducción cuántica que para un módulo primo $q$ y una distribución de error Gaussiana $\chi_\sigma$ de ancho $\alpha = \sigma/q = \omega(\sqrt{\log n}/n)$, si existe un algoritmo eficiente capaz de resolver Decision-LWE en el caso promedio para instancias aleatorias $(\mathbf{A}, \mathbf{b})$, entonces existe un algoritmo cuántico capaz de aproximar problemas geométricos difíciles en el peor caso sobre cualquier retículo de dimensión $n$ (tales como la versión de aproximación polinomial del \textit{Shortest Independent Vectors Problem} $\text{SIVP}_\gamma$ o $\text{SVP}_\gamma$) \cite{regev2009lwe, rewal2023quantumsafe}.
+
+Esta garantía implica que una instancia individual de LWE generada al azar no posee ``casos d\'ebiles'', a diferencia de los esquemas criptográficos tradicionales (RSA o ECC), cuya seguridad depende únicamente de la dificultad promedio de factorizar enteros o calcular logaritmos discretos en grupos específicos \cite{rewal2023quantumsafe, mukil2026implementing, lombardi2022postquantum}.
+
+\paragraph{Parámetros Críticos y Trade-offs de Seguridad y Rendimiento}
+
+El nivel de seguridad de la primitiva LWE y su eficiencia práctica en la construcción de protocolos están gobernados por el balance directo entre cuatro parámetros interdependientes \cite{regev2009lwe, yang2025multiserver, lai2025leaky}:
+
+\begin{itemize}
+    \item \textbf{Dimensión Secreta ($n$):} Determina el rango espacial del vector secreto $\mathbf{s} \in \mathbb{Z}_q^n$. Governa la dureza asintótica del problema frente a algoritmos de reducción de bases de retículos (ej. BKZ o algoritmos de cribado \textit{Sieve}) \cite{mukil2026implementing}. Aumentar $n$ incrementa exponencialmente la resistencia cuántica, pero eleva cuadráticamente el tamaño de las matrices públicas $\mathbf{A} \in \mathbb{Z}_q^{n \times m}$ \cite{yang2025multiserver, ma2026laasso}.
+    
+    \item \textbf{Módulo Aritmético ($q$):} Define la aritmética modular sobre la cual se realizan todas las sumas y multiplicaciones. La relación entre el módulo $q$ y la magnitud del error $\sigma$ (la razón módulo-ruido $q/\sigma$) es crítica. Un ratio $q/\sigma$ elevado simplifica la corrección y reconciliación de errores en el receptor, pero reduce la dureza geométrica de LWE \cite{yang2025multiserver, rewal2023quantumsafe}.
+    
+    \item \textbf{Número de Muestras ($m$ o $Q$):} Representa el número de ecuaciones lineales expuestas al adversario. Si el número de consultas $m$ es ilimitado o excesivamente grande en comparación con $n$, la seguridad teórica puede degradarse si no se acota la norma de los ruidos \cite{lombardi2022postquantum, lai2025leaky}. En aplicaciones reales, $m$ se parametriza linealmente con la dimensión secreta ($m = \text{poly}(n)$) \cite{yang2025multiserver}.
+    
+    \item \textbf{Distribución de Error ($\chi$):} Define la distribución aleatoria sobre $\mathbb{Z}$ de los términos $e$. Mientras que el análisis teórico clásico utiliza distribuciones Gaussianas discretas $\chi_\sigma$, implementaciones de alto rendimiento reemplazan la Gaussiana por la \textit{Distribución Binomial Centrada} (CBD con parámetro $\eta$), la cual permite realizar el muestreo en tiempo constante $O(1)$\cite{yang2025multiserver, mukil2026implementing}.
+\end{itemize}
+
+
+
+\subsubsection{Variantes Algebraicas y Estructurales del Problema LWE}
+
+\paragraph{Ring-LWE (RLWE) y la Aceleración mediante la Transformada de Teoría de Números (NTT)}
+El problema \textit{Learning with Errors} (LWE) estándar impone requerimientos de almacenamiento y sobrecarga computacional prohibitivos para muchos sistemas prácticos, dado que su matriz pública exige un espacio en memoria de orden $O(n^2)$. Para resolver esta limitación, se introdujo \textit{Ring-Learning with Errors} (RLWE), una variante algebraicamente estructurada que traslada la aritmética desde el cuerpo finito $\mathbb{Z}_q$ hacia un anillo polinomial cociente $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle f(x) \rangle$ \cite{nguyen2019high, mukil2026implementing}. En esta estructura, $f(x) = x^n + 1$ se fija habitualmente como un polinomio ciclotómico irreducible de grado $n$ (donde $n$ es una potencia de 2) y $q$ es un módulo primo. 
+
+La matriz pública $\mathbf{A} \in \mathbb{Z}_q^{m \times n}$ de LWE se reemplaza en RLWE por un único polinomio $a(x) \leftarrow \mathcal{R}_q$ elegido uniformemente al azar, reduciendo drásticamente el espacio de la clave pública de $O(n^2)$ a $O(n)$ \cite{nguyen2019high}. El secreto $s(x)$ y el error $e(x)$ se definen como polinomios en $\mathcal{R}_q$, muestreando los coeficientes del error desde una distribución discreta Gaussiana $\chi_\sigma$ (o una distribución binomial centrada equivalente en implementaciones prácticas). Una muestra del problema decisional RLWE se genera algebraicamente como:
+
+\begin{equation}
+b(x) = a(x) \cdot s(x) + e(x) \pmod q
+\end{equation}
+
+La ventaja computacional determinante de RLWE radica en la optimización de la multiplicación polinomial mediante la Transformada de Teoría de Números (NTT), la cual reduce la complejidad temporal de la convolución discreta de $O(n^2)$ a $O(n \log n)$ \cite{nguyen2019high}. Para evitar la latencia y la sobrecarga de memoria asociadas al rellenado de ceros (\textit{zero-padding}), se utiliza la \textit{convolución envuelta negativa}. Si el anillo admite una raíz primitiva $n$-ésima de la unidad $\omega \in \mathbb{Z}_q$, se define el factor de escala $\psi \equiv \sqrt{\omega} \pmod q$. Los coeficientes de los polinomios $a(x)$ y $b(x)$ se preprocesan escalando su $i$-ésimo término por $\psi^i$ (obteniendo los vectores de coeficientes modificado $a'$ y $b'$). De este modo, la multiplicación en $\mathcal{R}_q$ se reduce a un producto elemento a elemento ($\odot$) en el dominio transformado:
+
+\begin{equation}
+c' = \text{INTT}_{\omega}^n \left( \text{NTT}_{\omega}^n(a') \odot \text{NTT}_{\omega}^n(b') \right)
+\end{equation}
+
+Este enfoque minimiza la latencia computacional y el área de silicio requerida en hardware, convirtiendo a RLWE en un pilar fundamental de la criptografía poscuántica \cite{nguyen2019high, mukil2026implementing}.
+
+\paragraph{Module-LWE (MLWE)}
+Aunque RLWE logra una reducción dramática en la sobrecarga espacial y temporal, la estructura de retículo ideal subyacente impone simetrías algebraicas rigurosas que suscitan ciertas prevenciones teóricas en materia de seguridad. \textit{Module-Learning with Errors} (MLWE) surge como un marco algebraico intermedio que logra un balance óptimo entre la seguridad estricta de LWE sobre retículos no estructurados y la alta eficiencia de RLWE \cite{mukil2026implementing, yang2025multiserver}. En lugar de trabajar con escalares o con un único polinomio de grado elevado, MLWE emplea matrices de dimensión reducida $k \times k$ (donde $k \ge 1$ es la dimensión del módulo) cuyos elementos son polinomios pertenecientes al anillo $\mathcal{R}_q$.
+
+Bajo este paradigma, la matriz pública se define como $\mathbf{A} \in \mathcal{R}_q^{k \times k}$, mientras que el vector secreto $\mathbf{s} \in \mathcal{R}_q^k$ y el vector de error $\mathbf{e} \in \mathcal{R}_q^k$ están formados por $k$ polinomios independientes muestreados de la distribución de ruido. Una muestra del problema decisional de módulo (DMLWE) se expresa como la tupla:
+
+\begin{equation}
+(\mathbf{A}, \, \mathbf{b} = \mathbf{A}\mathbf{s} + \mathbf{e} \pmod q) \in \mathcal{R}_q^{k \times k} \times \mathcal{R}_q^k
+\end{equation}
+
+Además de atenuar las simetrías de los ideales de anillo, MLWE aporta la propiedad operativa de la escalabilidad modular \cite{yang2025multiserver}: permite incrementar el nivel de seguridad del sistema (por ejemplo, ajustándose a las categorías 1, 3 o 5 de estandarización del NIST) modificando únicamente el parámetro matricial $k$ ($k=2, 3, 4$), sin necesidad de modificar el polinomio base $f(x) = x^{256} + 1$ ni rediseñar los coprocesadores hardware concebidos para la NTT. Esta flexibilidad ha llevado a que estándares internacionales como \textit{CRYSTALS-Kyber} fundamenten la seguridad de su mecanismo de encapsulación de claves (KEM) directamente en la dureza de MLWE \cite{mukil2026implementing}.
+
+\paragraph{Leaky LWE (LWE con Fugas)}
+El modelo \textit{Leaky LWE} formaliza la seguridad del problema en escenarios de canal lateral o ejecución adversaria avanzada, asumiendo que el atacante puede obtener información residual (fugas) sobre el estado interno del secreto y del error de forma semi-adaptativa \cite{lai2025leaky}. En este esquema, además de la tupla pública $(\mathbf{A}, \mathbf{b})$, el adversario recibe una medida de fuga ruidosa expresada como:
+
+\begin{equation}
+\mathbf{l}^T = (\mathbf{s}^T, \mathbf{e}^T)\mathbf{L} + \mathbf{f}^T
+\end{equation}
+
+donde $\mathbf{L}$ representa una matriz de fuga de norma acotada (que puede ser seleccionada semi-adaptativamente por el atacante tras observar la matriz pública $\mathbf{A}$) y $\mathbf{f}$ es un vector de error independiente asociado al canal de fuga \cite{lai2025leaky}. 
+
+Históricamente, garantizar la seguridad en presencia de fugas requería recurrir a la técnica de ``inundación de ruido estadístico'' (\textit{noise flooding}), la cual obligaba a emplear módulos $q$ de tamaño superpolinomial ($q > 2^{128}$) para ahogar la información filtrada, penalizando fuertemente el rendimiento del sistema. \textit{Leaky LWE} demuestra formalmente una reducción de seguridad estrecha desde LWE estándar, probando que la presencia del vector $\mathbf{l}$ no trivializa la extracción del secreto $\mathbf{s}$ ni compromete la pseudoaleatoriedad de la muestra \cite{lai2025leaky}. Esto permite a los diseñadores utilizar módulos $q$ polilogarítmicos mucho más pequeños (donde $q$ escala de manera proporcional a $\sqrt{Q}$, siendo $Q$ el número de consultas de fuga del atacante, permitiendo módulos prácticos del orden de $q \approx 2^{32}$). Este avance resulta determinante para eliminar la sobrecarga computacional en protocolos complejos como las pruebas de conocimiento cero (ZKP), las firmas umbral y los esquemas criptográficos basados en identidad \cite{lai2025leaky}.
+
+\paragraph{Binary-Secret LWE (BLWE)}
+\textit{Binary-Secret Learning with Errors} (BLWE) constituye una especialización de LWE en la que la selección de las componentes del vector secreto $\mathbf{s}$ se restringe estrictamente al dominio binario $\{0, 1\}^n$ \cite{an2023secrethandshakes}. Restringir el secreto al alfabeto binario sustituye las multiplicaciones vectoriales de alto costo por sumas vectoriales condicionales simples y reduce sensiblemente la huella de memoria de las claves privadas, resultando altamente atractivo en la construcción de protocolos para dispositivos de recursos muy restringidos y en esquemas de reconocimiento mutuo anónimo (\textit{secret handshakes}) \cite{an2023secrethandshakes}.
+
+\paragraph{Learning with Rounding (LWR) y Ring-LWR}
+A diferencia de LWE o RLWE, cuyas pruebas de reducción de seguridad dependen de la adición estocástica de un término de error $e$ muestreado en tiempo de ejecución desde una distribución discreta Gaussiana, la variante \textit{Learning with Rounding} (LWR) elimina la necesidad de generar ruido aleatorio y lo sustituye por una operación de redondeo modular determinista \cite{mukil2026implementing}. Específicamente, el error de cuantización inducido al escalar la muestra desde un módulo mayor $q$ hacia un módulo menor $p < q$ mediante la función determinista $\lfloor \frac{p}{q} \cdot x \rfloor$, reemplaza funcionalmente al ruido gaussiano. 
+
+Esquemas derivados como \textit{Lizard} y \textit{Ring-Lizard} combinan los beneficios de espacio de la estructura de anillo (Ring-LWE) con el redondeo determinista de LWR \cite{mukil2026implementing}. Al suprimir por completo los generadores de entropía y el muestreo de gaussianas discretas en tiempo de ejecución, estas variantes reducen radicalmente el consumo energético, resultando óptimas para arquitecturas del Internet de las Cosas (IoT) y entornos con restricciones severas de cómputo \cite{mukil2026implementing}.
+
+\paragraph{Pairing with Error (PWE) y Decision PWE (DPWE)}
+Las suposiciones de dureza \textit{Pairing with Error} (PWE) y su variante decisional (DPWE) se diseñan e introducen primordialmente para respaldar las demostraciones formales de seguridad en protocolos de Intercambio de Claves Autenticado por Contraseña (PAKE) en entornos poscuánticos \cite{yang2025multiserver, rewal2023quantumsafe}. En estos esquemas, las partes intervinientes calculan productos LWE ruidosos y utilizan mecanismos avanzados de reconciliación modular de errores (como los esquemas de Peikert o Ding) para corregir las discrepancias producidas por el error $e$ y concertar una clave simétrica idéntica. 
+
+La hipótesis PWE/DPWE establece formalmente que la clave derivada mediante dicha función de reconciliación permanece computacionalmente indistinguible de un valor uniforme aleatorio para cualquier observador externo que intercepte tanto los mensajes LWE públicos como la señal de reconciliación enviada por el canal abierto \cite{yang2025multiserver, rewal2023quantumsafe}.
+
+\subsubsection{Muestreo y Gestión del Ruido: De la Distribución Gaussiana a la Distribución Binomial Centrada (CBD)}
+
+\paragraph{Distribución Gaussiana Discreta y Algoritmos Clásicos de Muestreo}
+
+En la criptografía basada en retículos, la seguridad del problema \textit{Learning with Errors} (LWE) y sus variantes algebraicas depende intrínsecamente de la inyección de un término de error no determinista e impredecible \cite{regev2009lwe, yang2025multiserver}. Tradicionalmente, este ruido se modela mediante una distribución Gaussiana discreta $\chi_\sigma$ sobre el anillo de enteros $\mathbb{Z}$ o sobre un retículo $n$-dimensional $\Lambda \subset \mathbb{R}^n$, centrada en el origen y parametrizada por la desviación estándar $\sigma > 0$ (o parámetro Gaussiano $s = \sigma \sqrt{2\pi}$) \cite{nguyen2019high, huang2018lattice, rewal2023quantumsafe}.
+
+Para un centro $\mathbf{c} \in \mathbb{R}^n$ y un parámetro $s > 0$, la función de densidad de probabilidad Gaussiana discreta asigna a cada vector $\mathbf{x} \in \Lambda$ una probabilidad proporcional a su peso exponencial euclídeo \cite{huang2018lattice, lai2025leaky}:
+
+\begin{equation}
+D_{\Lambda, s, \mathbf{c}}(\mathbf{x}) = \frac{\exp\left(-\pi \frac{\|\mathbf{x} - \mathbf{c}\|^2}{s^2}\right)}{\sum_{\mathbf{y} \in \Lambda} \exp\left(-\pi \frac{\|\mathbf{y} - \mathbf{c}\|^2}{s^2}\right)}
+\end{equation}
+
+En la literatura, la generación de muestras pertenecientes a la distribución Gaussiana discreta se realiza históricamente mediante dos familias de algoritmos principales \cite{huang2018lattice, nguyen2019high}:
+
+\begin{itemize}
+    \item \textbf{Algoritmo de Knuth-Yao:} Diseñado para el muestreo de ruido escalar sobre enteros, representa la distribución teórica a través de un Árbol de Grafos de Distribución Discreta (\textit{Discrete Distribution Graph} - DDG) \cite{nguyen2019high}. El algoritmo recorre la estructura de árbol consumiendo bits aleatorios de entropía para seleccionar el coeficiente final. Aunque Knuth-Yao demuestra una eficiencia cercana a la entropía teórica ideal (optimizando el número de bits aleatorios requeridos), depende de tablas de búsqueda precalculadas y de un número variable de comparaciones en función de los bits muestreados \cite{nguyen2019high}.
+    
+    \item \textbf{Algoritmo de Muestreo de Trapdoor GPV (\texttt{SampleD}):} Desarrollado por Gentry, Peikert y Vaikuntanathan, se utiliza para extraer vectores cortos en retículos de la forma $\Lambda_q^\perp(\mathbf{A})$ mediante el uso de una base de trampa corta $\mathbf{T}_A$ \cite{huang2018lattice}. Dado un vector objetivo $\mathbf{t} \in \mathbb{Z}_q^n$ y una matriz pública $\mathbf{A} \in \mathbb{Z}_q^{n \times m}$, el algoritmo $\texttt{SampleD}(\mathbf{T}_A, s, \mathbf{c}, \mathbf{t})$ genera un vector aleatorio $\mathbf{x} \in \mathbb{Z}^m$ distribuido según $D_{\Lambda, s, \mathbf{c}}$ que satisface la relación $\mathbf{A}\mathbf{x} \equiv \mathbf{t} \pmod q$ \cite{huang2018lattice}. La unidireccionalidad (\textit{one-wayness}) de este algoritmo fundamenta la seguridad de esquemas de autenticación basados en trampas \cite{huang2018lattice}.
+\end{itemize}
+
+A pesar de sus sólidas propiedades estadísticas, el muestreo Gaussiano discreto clásico presenta severas limitaciones en entornos físicos de ejecución \cite{mukil2026implementing, yang2025multiserver}. La necesidad de evaluar funciones trascendentes, usar tablas de búsqueda dependientes de los datos o realizar iteraciones variables en algoritmos como Knuth-Yao induce variaciones en los tiempos de respuesta y en los perfiles de consumo energético, exponiendo al dispositivo a ataques de canal lateral (\textit{Side-Channel Attacks} - SCA) y ataques de temporización (\textit{timing attacks}) \cite{mukil2026implementing}.
+
+\paragraph{Muestreador de Distribución Binomial Centrada (CBD)}
+
+Con el objetivo de eliminar la sobrecarga computacional del muestreo Gaussiano y garantizar un comportamiento algebraico homogéneo, las construcciones modernas de retículos (como Kyber y Module-LWE) adoptan el Muestreador de Distribución Binomial Centrada (\textit{Centered Binomial Distribution} - CBD) \cite{yang2025multiserver, mukil2026implementing}.
+
+La distribución CBD, denotada como $\psi_\eta$, aproxima la curva de una distribución Gaussiana discreta centrada en cero con parámetro de cota entero $\eta \in \mathbb{Z}^+$ \cite{yang2025multiserver}. Para generar un coeficiente de error $e \in [-\eta, \eta]$, el algoritmo toma $2\eta$ bits aleatorios independientes e idénticamente distribuidos $a_0, a_1, \dots, a_{\eta-1}, b_0, b_1, \dots, b_{\eta-1} \in \{0, 1\}$ y calcula la diferencia de sus pesos de Hamming \cite{yang2025multiserver}:
+
+\begin{equation}
+e = \sum_{i=0}^{\eta-1} a_i - \sum_{i=0}^{\eta-1} b_i
+\end{equation}
+
+Por simetría, la esperanza matemática de la distribución es $E[e] = 0$, y su varianza viene dada por $\sigma^2 = \eta / 2$, correspondiente a una desviación estándar de $\sigma = \sqrt{\eta/2}$ \cite{yang2025multiserver}.
+
+En la parametrización estándar de Module-LWE, se selecciona el parámetro $\eta = 2$, lo que fija la desviación estándar en $\sigma = 1$ y restringe el rango de los coeficientes del error al conjunto discreto corto $\{-2, -1, 0, 1, 2\}$ \cite{yang2025multiserver}. El muestreo de un polinomio de error de grado $d=256$ requiere únicamente la extracción de $2 \cdot \eta \cdot d = 1024$ bits de aleatoriedad uniforme, procesados mediante operaciones de bits paralelas sobre palabras del microprocesador \cite{yang2025multiserver}.
+
+\paragraph{Fundamento de Inmunidad Física y Aplicabilidad al Prototipo}
+
+La sustitución de la distribución Gaussiana discreta por el algoritmo CBD con $\eta = 2$ representa una decisión de diseño fundamental para garantizar la factibilidad física y la seguridad de un prototipo de autenticación \cite{yang2025multiserver, mukil2026implementing}:
+
+\begin{itemize}
+    \item \textbf{Ejecución en Tiempo Constante Estricto $O(1)$:} A diferencia del algoritmo Knuth-Yao o del muestreo por rechazo Gaussiano, la CBD no contiene bucles condicionales de duración indeterminada ni saltos de ejecución (\textit{if-else}) dependientes de datos secretos \cite{yang2025multiserver, mukil2026implementing}. Cada coeficiente se calcula mediante una secuencia fija y acotada de instrucciones booleanas a nivel de procesador (\texttt{AND}, \texttt{XOR}, desplazamientos de bits y conteo de peso de Hamming), asegurando que el tiempo de cómputo sea idéntico e independiente de los valores muestreados \cite{yang2025multiserver}.
+    
+    \item \textbf{Eliminación de Tablas de Búsqueda y Protección contra SCA:} Los accesos a memoria indexados por secretos en tablas de probabilidad Gaussiana constituyen una fuente principal de fugas por emisiones electromagnéticas y análisis diferencial de potencia (DPA) \cite{mukil2026implementing}. Al operar directamente sobre registros del procesador mediante operaciones binarias, la CBD genera una firma de consumo de energía plana y predecible, blindando el coprocesador de la tarjeta inteligente contra ataques de canal lateral de traza única (\textit{single-trace side-channel attacks}) \cite{mukil2026implementing}.
+    
+    \item \textbf{Eficiencia y Compactación de Memoria:} El algoritmo CBD elimina por completo la necesidad de almacenar tablas de precisión en coma flotante en la memoria sin afectar la indistinguibilidad estadística requerida para sostener la prueba de seguridad del protocolo \cite{yang2025multiserver, lai2025leaky}.
+\end{itemize}
+\subsubsection{Mecanismos de Reconciliación de Errores y Mapeo Criptográfico}
+
+\paragraph{El Problema de la Dispersión de Ruido en la Extracción de Claves Deterministas}
+
+En la criptografía basada en el problema \textit{Learning with Errors} (LWE) y sus variantes algebraicas (RLWE y MLWE), las operaciones interactivas entre dos entidades (cliente y servidor) involucran la inyección deliberada de errores Gaussianos o binomiales cortos para garantizar la seguridad frente a adversarios clásicos y cuánticos \cite{regev2009lwe, yang2025multiserver}. Sin embargo, esta perturbación estocástica introduce un desafío algebraico fundamental: cuando ambas partes calculan un producto escalar o polinomial compartido sobre el anillo $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^d + 1 \rangle$, los valores resultantes $w \in \mathbb{Z}_q$ y $w' \in \mathbb{Z}_q$ no son exactamente iguales, sino que difieren por un término de error acumulado no nulo $e \in \mathbb{Z}_q$, tal que $w' = w + e \pmod q$ \cite{yang2025multiserver, rewal2023quantumsafe}.
+
+En un esquema de autenticación o acuerdo de claves determinista, esta pequeña discrepancia aritmética impediría que ambas entidades obtengan exactamente la misma secuencia de bits de secreto, provocando fallos continuos de autenticación \cite{yang2025multiserver, mukil2026implementing}. Para resolver esta dispersión sin transmitir información en texto claro que comprometa la clave, se emplean técnicas de mapeo discreto y mecanismos de reconciliación de errores \cite{yang2025multiserver, rewal2023quantumsafe}.
+
+\paragraph{Codificación de Bits en Coeficientes Modulares}
+
+Para procesar datos binarios discretos dentro del espacio modular $\mathbb{Z}_q$, se requiere una función de codificación que mapee los símbolos del alfabeto binario $\{0, 1\}$ hacia coeficientes polinomiales con la máxima separación modular posible \cite{nguyen2019high, mukil2026implementing}.
+
+Dado un módulo entero $q$, la función de codificación mapea cada bit binario $b_i \in \{0, 1\}$ a un coeficiente polinomial $m_i \in \mathbb{Z}_q$ mediante la siguiente regla determinista \cite{nguyen2019high}:
+
+\begin{equation}
+m_i = \text{Encode}(b_i) = \begin{cases} 0 & \text{si } b_i = 0 \\ \frac{q-1}{2} & \text{si } b_i = 1 \end{cases} \pmod q
+\end{equation}
+
+Esta asignación ubica la representación del bit $1$ en el punto medio del espectro modular $\mathbb{Z}_q$ (a distancia máxima de $0$), lo que maximiza la tolerancia geométrica del sistema frente a las desviaciones causadas por el ruido LWE durante el proceso de descifrado y reconciliación \cite{nguyen2019high, rewal2023quantumsafe}.
+
+\paragraph{Mecanismo de Reconciliación de Peikert y Funciones de Redondeo}
+
+Para permitir que dos entidades concilien el mismo bit secreto a partir de valores ruidosos aproximados $w, w' \in \mathbb{Z}_q$, se utiliza el mecanismo de reconciliación de errores de Peikert \cite{yang2025multiserver}. Supóngase que $q$ es un entero modular. Se definen los siguientes subconjuntos de partición sobre $\mathbb{Z}_q$ \cite{yang2025multiserver}:
+
+\begin{equation}
+I_0 = \left\{0, 1, \dots, \left\lfloor \frac{q}{4} \right\rfloor - 1\right\}, \quad I_1 = \left\{-\left\lfloor \frac{q}{4} \right\rfloor, \dots, -1\right\}, \quad \sigma = \left[-\left\lfloor \frac{q}{8} \right\rfloor, \left\lfloor \frac{q}{8} \right\rfloor\right) \cap \mathbb{Z}_q
+\end{equation}
+
+A partir de esta partición, Peikert define tres funciones matemáticas fundamentales \cite{yang2025multiserver}:
+
+\begin{enumerate}
+    \item \textbf{Función de Redondeo Cruzado (\textit{Cross-Rounding}):} Extrae un bit de señal de sincronización $v \in \{0, 1\}$ determinando en qué región del cuadrante modular se encuentra el valor:
+    \begin{equation}
+    \langle x \rangle_{q, 2} = \left\lfloor \frac{4}{q} \cdot x \right\rfloor \pmod 2
+    \end{equation}
+    
+    \item \textbf{Función de Redondeo Modular:} Extrae el bit de clave altamente significativo redondeando el valor modular:
+    \begin{equation}
+    \lfloor x \rfloor_{q, 2} = \left\lfloor \frac{2}{q} \cdot x \right\rfloor \pmod 2
+    \end{equation}
+    
+    \item \textbf{Función de Reconciliación Determinista $rec(w, v)$:} Utiliza el valor ruidoso $w$ y la señal de ayuda $v = \langle w' \rangle_{q, 2}$ enviada por la otra parte para recuperar de forma exacta el bit redondeado original:
+    \begin{equation}
+    rec(w, v) = \begin{cases} 0 & \text{si } w \in I_v + \sigma \pmod q \\ 1 & \text{en otro caso} \end{cases}
+    \end{equation}
+\end{enumerate}
+
+Garantía de Corrección: Si dos valores modulares difieren por un error acotado $w' = w + e \pmod q$ con $|e| < q/8$, entonces el mecanismo de Peikert garantiza matemáticamente que $\lfloor w \rfloor_{q, 2} = rec(w', \langle w \rangle_{q, 2})$, logrando una concordancia de bits del 100\% entre ambas partes \cite{yang2025multiserver}. De forma complementaria, variantes como la función auxiliar modular $f_2(u, d) = \left(u + d \cdot \frac{q-1}{2}\right) \bmod q \bmod 2$ permiten obtener resultados idénticos ajustando la paridad modular \cite{rewal2023quantumsafe}.
+\subsubsection{Tolerancia a la Fuga de Información y Análisis de Resistencia: Leaky LWE y Reducción del Módulo}
+
+\paragraph{La Problemática de la Inundación Estadística de Ruido (\textit{Noise Flooding})}
+
+En la teoría de protocolos criptográficos y pruebas de conocimiento cero (\textit{Zero-Knowledge Proofs} - ZKP) basados en la dureza de problemas de retículos, la demostración formal de la propiedad de conocimiento cero o de resistencia ante consultas adaptativas ha dependido históricamente de la técnica conocida como \textit{inundación estadística de ruido} (\textit{noise flooding}, \textit{noise drowning} o \textit{noise smudging}) \cite{goldwasser1989knowledge, lai2025leaky}.
+
+Cuando un probador emite una respuesta durante un protocolo interactivo o no interactivo, dicha respuesta combina linealmente los elementos secretos con un ruido de enmascaramiento. Algebraicamente, la respuesta actúa como una fuga lineal ruidosa de la forma $\mathbf{l}^T = (\mathbf{s}^T, \mathbf{e}^T)\mathbf{L} + \mathbf{f}^T$, donde $\mathbf{s} \in \mathbb{Z}_q^n$ representa la clave secreta, $\mathbf{e} \in \mathbb{Z}_q^m$ es el vector de error de LWE, $\mathbf{L} \in \mathbb{Z}_q^{(n+m) \times Q}$ es la matriz de desafío del verificador y $\mathbf{f} \in \mathbb{Z}_q^Q$ es el ruido de enmascaramiento \cite{lai2025leaky}. Para asegurar que la distribución de $\mathbf{l}$ sea estadísticamente indistinguible de un valor independiente del secreto, el principio de \textit{noise flooding} exige que el parámetro de dispersión del ruido $\mathbf{f}$ sea superpolinomialmente mayor que la norma del secreto enmascarado \cite{lai2025leaky}:
+
+\begin{equation}
+\sigma_f \ge \text{superpoly}(\lambda) \cdot \|(\mathbf{s}^T, \mathbf{e}^T)\mathbf{L}\|
+\end{equation}
+
+Esta inundación masiva de ruido impone un grave inconveniente estructural: para evitar desbordamientos aritméticos que causen fallos de decodificación o invaliden las relaciones modulares, el módulo $q$ del sistema debe fijarse en un entero superpolinomialmente gigante, típicamente $q > 2^{128}$ \cite{lai2025leaky}. Para mantener la dureza del problema LWE frente a algoritmos de reducción de retículos ante un módulo $q$ tan elevado, es obligatorio escalar la dimensión del espacio $n$ a valores masivos \cite{regev2009lwe, lai2025leaky}. Como resultado, las claves públicas y las pruebas criptográficas alcanzan tamaños de varios megabytes, limitando su viabilidad en entornos de cómputo restringidos \cite{mukil2026implementing, lai2025leaky}.
+
+\paragraph{Fundamentos de Leaky LWE y Fugas Semi-Adaptativas}
+
+Con el fin de prescindir de la inundación estadística de ruido y sustentar la seguridad en una reducción estrictamente computacional, Lai, Swarnakar y Woo \cite{lai2025leaky} formalizaron la suposición \textit{Leaky LWE} (LWE con fugas). El problema Leaky LWE evalúa la dificultad de distinguir una muestra LWE genuina de una muestra uniformemente aleatoria en presencia de fugas lineales ruidosas introducidas de forma semi-adaptativa \cite{lai2025leaky}.
+
+Formalmente, dado el módulo $q$, las dimensiones $n, m, Q \in \mathbb{N}$ y las distribuciones de error $D_s, D_e, D_f$, el experimento de decisión Leaky LWE se define como sigue \cite{lai2025leaky}:
+
+\begin{enumerate}
+    \item Se muestrea una matriz pública uniforme $\mathbf{A} \leftarrow \mathbb{Z}_q^{n \times m}$.
+    \item El adversario observa la matriz $\mathbf{A}$ y selecciona de manera \textit{semi-adaptativa} una matriz de fuga de baja norma $\mathbf{L} = \begin{pmatrix} \mathbf{L}_s \\ \mathbf{L}_e \end{pmatrix} \in \mathbb{Z}^{(n+m) \times Q}$ sujeta a una cota de norma espectral \cite{lai2025leaky}.
+    \item Se muestrean el secreto $\mathbf{s} \leftarrow D_s$, el error LWE $\mathbf{e} \leftarrow D_e$ y el ruido de fuga $\mathbf{f} \leftarrow D_f$.
+    \item El adversario recibe la tupla $(\mathbf{A}, \mathbf{b}^T, \mathbf{l}^T)$, donde $\mathbf{l}^T = (\mathbf{s}^T, \mathbf{e}^T)\mathbf{L} + \mathbf{f}^T \pmod q$, y el vector $\mathbf{b}^T$ es una muestra LWE real $\mathbf{b}^T = \mathbf{s}^T\mathbf{A} + \mathbf{e}^T \pmod q$ (si $b=0$) o un vector aleatorio $\mathbf{b}^T \leftarrow \mathbb{Z}_q^m$ (si $b=1$) \cite{lai2025leaky}.
+\end{enumerate}
+
+Lai et al. \cite{lai2025leaky} demostraron que Leaky LWE no es computacionalmente más fácil de resolver que el problema LWE estándar bajo las mismas dimensiones. Mediante transformaciones lineales sobre distribuciones Gaussianas discretas condicionales, los autores construyeron una reducción de seguridad estricta (\textit{tight reduction}) desde LWE clásico hacia Leaky LWE, demostrando que la presencia de fugas ruidosas no reduce la seguridad del problema original \cite{lai2025leaky}.
+
+\paragraph{Cota de Norma de Fuga y Escalamiento del Módulo $q \propto \sqrt{Q}$}
+
+Para que la reducción de seguridad de Leaky LWE sea válida, la matriz de fuga $\mathbf{L}$ elegida semi-adaptativamente debe satisfacer una cota de norma espectral $\beta$ \cite{lai2025leaky}:
+
+\begin{equation}
+\|\mathbf{L}^T \mathbf{L}\| \le \beta
+\end{equation}
+
+El resultado de esta cota es que la magnitud del ruido no requiere un crecimiento superpolinomial, sino que escala en función de la raíz cuadrada del número total de columnas de fuga o consultas del adversario $Q$ \cite{lai2025leaky}:
+
+\begin{equation}
+q \ge c \cdot \sqrt{Q}
+\end{equation}
+
+donde $c > 0$ es una constante dependiente de los parámetros del retículo \cite{lai2025leaky}. En aplicaciones donde el número de consultas o transacciones está acotado polinomialmente (por ejemplo, $Q \approx 2^{60}$ a $2^{64}$), el módulo $q$ requiere únicamente un incremento moderado de aproximadamente $30$ bits en lugar de los $128$ bits exigidos por \textit{noise flooding} \cite{lai2025leaky}. Esto permite el uso de módulos compactos de 16 a 32 bits (tales como $q = 3329$) garantizando la reducción formal de seguridad poscuántica \cite{yang2025multiserver, lai2025leaky}.
+
+\paragraph{Análisis de Seguridad Geométrica y Resistencia ante Ataques de Reducción de Retículos (BKZ)}
+
+La reducción del módulo a valores pequeños ($q \in [2^{16}, 2^{32}]$) requiere analizar la seguridad del sistema frente a algoritmos de reducción de bases de retículos, siendo el algoritmo BKZ (\textit{Block-Korkine-Zolotarev}) el estándar de referencia para medir la resistencia geométrica clásica y cuántica \cite{badiezadegan2026complexity, mukil2026implementing}.
+
+Un sistema sobre retículos resultaría vulnerable a ataques BKZ si se fijara simultáneamente un módulo $q$ pequeño y una dimensión espacial reducida \cite{badiezadegan2026complexity}. BKZ opera reduciendo las bases del retículo mediante el desplazamiento de una ventana o bloque de dimensión reducida $\beta_{\text{BKZ}} \le N$ a lo largo del espacio vectorial de dimensión $N$, resolviendo el problema del vector más corto (SVP) exacto dentro de cada sub-bloque mediante algoritmos de cribado cuántico (\textit{quantum sieving}) \cite{badiezadegan2026complexity, mukil2026implementing}. La complejidad temporal de resolver SVP sobre cada bloque de dimensión $\beta_{\text{BKZ}}$ crece de forma exponencial \cite{badiezadegan2026complexity, mukil2026implementing}:
+
+\begin{equation}
+T_{\text{BKZ}}(\beta_{\text{BKZ}}) \approx \mathcal{O}\left(2^{c \cdot \beta_{\text{BKZ}}}\right) \quad \text{donde } c \approx 0.265 \text{ a } 0.292
+\end{equation}
+
+Para que un atacante no logre extraer el secreto o el error utilizando BKZ sobre un retículo de dimensión $N$, debe ocurrir que al alcanzar un factor de calidad geométrico $\delta_0$ suficientemente pequeño se le exija fijar un tamaño de bloque $\beta_{\text{BKZ}}$ elevado \cite{badiezadegan2026complexity}. Un bloque $\beta_{\text{BKZ}} \ge 400$ demanda una cantidad de operaciones cuánticas del orden de $T_{\text{BKZ}} \ge 2^{160}$, valor que supera holgadamente el umbral de 128 bits de seguridad poscuántica (NIST Nivel 1) y garantiza que el sistema permanezca inexpugnable ante ataques geométricos de reducción de bases \cite{badiezadegan2026complexity, mukil2026implementing, yang2025multiserver}.
+
+\paragraph{Comportamiento de la Matriz de Desafío $\mathbf{L}$ y Rechazo de Consultas Maliciosas}
+
+El modelo de Leaky LWE requiere analizar el comportamiento de la matriz de desafío o fuga $\mathbf{L}$ en escenarios donde un verificador o adversario active consultas en el protocolo:
+
+\begin{itemize}
+    \item \textbf{Impacto de una Matriz $\mathbf{L}$ de Norma Elevada:} Si un adversario intentara introducir una matriz de fuga $\mathbf{L}$ con coeficientes grandes (alta norma espectral), el producto $\mathbf{s}\mathbf{L}$ amplificaría geométricamente los valores de la clave secreta $\mathbf{s}$ por encima de la magnitud del ruido de enmascaramiento $\mathbf{f}$ \cite{lai2025leaky}. Como establecieron Alperin-Sheriff y Peikert, si la norma de $\mathbf{L}$ no estuviera acotada, el adversario podría calcular la pseudoinversa de $\mathbf{L}$ sobre los enteros y recuperar algebraicamente el secreto $\mathbf{s}$ \cite{lai2025leaky}.
+    
+    \item \textbf{Mecanismo de Rechazo y Aborto de Transacción:} En los protocolos criptográficos, la matriz de desafío $\mathbf{L}$ o la respuesta calculada están sujetas a una verificación estricta de norma espectral y norma euclidiana ($\|\mathbf{z}\| \le \beta$) \cite{lombardi2022postquantum, lai2025leaky}. Si el adversario envía un desafío de norma elevada para intentar medir el secreto, el algoritmo de verificación o el muestreo de rechazo del probador detecta que la norma excede el límite $\beta$ y aborta la transacción inmediatamente, evitando responder o anulando la respuesta antes de que se emita información expuesta \cite{lombardi2022postquantum, lai2025leaky}.
+    
+    \item \textbf{Garantía de Cero Fuga para Norma Baja:} Cuando la matriz de desafío respeta la cota de norma espectral ($\|\mathbf{L}^T \mathbf{L}\| \le \beta$), el Teorema de Leaky LWE garantiza matemáticamente que la respuesta obtenida es computacionalmente indistinguible de ruido aleatorio uniforme \cite{lai2025leaky}. De este modo, la interacción no filtra ningún bit de información utilizable sobre la clave secreta $\mathbf{s}$, preservando la resistencia poscuántica y la propiedad de conocimiento cero del sistema \cite{lombardi2022postquantum, lai2025leaky}.
+\end{itemize}
+\subsubsection{Protección del Canal de Comunicación: Token Hiding con Kyber y AES}
+
+\paragraph{El Problema del Verificador No Designado y la Intercepción por Terminales Comprometidos}
+
+En los protocolos de autenticación distribuidos y sistemas de inicio de sesión único (\textit{Single Sign-On} - SSO), las credenciales y pruebas criptográficas generadas por el usuario deben transmitirse frecuentemente a través de intermediarios no confiables o redes públicas antes de alcanzar la entidad verificadora final \cite{ma2026laasso}.
+
+Si las pruebas de conocimiento cero (ZKP) o los tokens de autenticación se transmitieran en texto claro a través del canal de comunicación, surgiría el problema del \textit{verificador no designado} \cite{ma2026laasso}. Un cajero automático comprometido mediante soporte malicioso o dispositivos de captura ilegítima (\textit{skimmers}) podría inspeccionar el contenido del token, extraer metadatos de la transacción o rastrear las pruebas enviadas en sesiones sucesivas \cite{ma2026laasso, lombardi2022postquantum}. Esta exposición pública destruye la propiedad de no vinculabilidad (\textit{unlinkability}) y permite a adversarios intermedios perfilarlos hábitos de uso y desplazamientos del cliente dentro de la red bancaria \cite{ma2026laasso, lombardi2022postquantum}.
+
+\paragraph{El Mecanismo de Ocultación de Tokens (\textit{Token Hiding}) mediante Cifrado Híbrido}
+
+Para neutralizar la amenaza de intercepción en nodos intermedios y garantizar que únicamente el servidor central designado pueda validar la autenticación, el protocolo adopta la técnica de \textit{ocultación de tokens} (\textit{token hiding}), inspirada en la arquitectura de credenciales anónimas LAASSO \cite{ma2026laasso}. Este mecanismo implementa un esquema de cifrado híbrido poscuántico que combina el algoritmo asimétrico sobre retículos modulares Kyber (ML-KEM) con el algoritmo de cifrado simétrico estándar AES \cite{ma2026laasso}.
+
+Formalmente, el servidor central genera un par de claves de cifrado y descifrado $(vpk, vsk)$ mediante el algoritmo de generación de claves de Kyber \cite{ma2026laasso}:
+
+\begin{equation}
+(vpk, vsk) \leftarrow \text{Kyber.KeyGen}(1^\lambda)
+\end{equation}
+
+donde $vpk$ es la clave pública de verificación distribuida y $vsk$ es la clave privada custodiada en el \textit{Hardware Security Module} - HSM del servidor \cite{ma2026laasso}. Cuando el cliente construye la prueba ZKP no interactiva $\text{tok}'$, junto con el identificador único de ticket $\mathbf{t}$ y la marca de tiempo de validez $\nu$, ejecuta la fase de enmascaramiento $\text{SignOn}$ estructurada en los siguientes pasos \cite{ma2026laasso}:
+
+\begin{enumerate}
+    \item \textbf{Generación de Clave Simétrica Efímera:} El cliente muestrea de forma completamente aleatoria una clave simétrica de un solo uso $K \stackrel{\$}{\leftarrow} \{0, 1\}^\lambda$ (típicamente para AES-256) \cite{ma2026laasso}.
+    \item \textbf{Encapsulamiento Asimétrico Poscuántico:} El cliente encripta la clave simétrica efímera $K$ utilizando la clave pública del servidor bancario $vpk$ mediante la función de cifrado de Kyber \cite{ma2026laasso}:
+    \begin{equation}
+    \text{tok}_1 = \text{Kyber.Enc}(vpk, K)
+    \end{equation}
+    \item \textbf{Cifrado Simétrico del Token de Autenticación:} El cliente encripta el paquete de datos que contiene la argumento de prueba $\text{tok}'$, el identificador $\mathbf{t}$ y el sello de tiempo $\nu$ empleando la clave $K$ a través de cifrado simétrico AES \cite{ma2026laasso}:
+    \begin{equation}
+    \text{tok}_2 = \text{AES.Enc}(K, \{\text{tok}', \mathbf{t}, \nu\})
+    \end{equation}
+    \item \textbf{Ensamblaje del Token Compuesto:} El token final transmitido hacia la red se define como la tupla $\text{tok} = (\text{tok}_1, \text{tok}_2)$ \cite{ma2026laasso}.
+\end{enumerate}
+
+\paragraph{Garantías de Seguridad y el Canal Ciego de Transmisión}
+
+El procesamiento del token en la entidad receptora garantiza la verificación exclusiva por el destinatario autorizado. Al recibir el token compuesto $\text{tok} = (\text{tok}_1, \text{tok}_2)$, el servidor central recupera la clave simétrica $K = \text{Kyber.Dec}(vsk, \text{tok}_1)$ utilizando su clave privada $vsk$ y, posteriormente, descifra el contenido simétrico $\{\text{tok}', \mathbf{t}, \nu\} = \text{AES.Dec}(K, \text{tok}_2)$ para proceder con la verificación de la prueba ZKP sobre el retículo \cite{ma2026laasso}.
+
+Las propiedades de seguridad del mecanismo de \textit{token hiding} se fundamentan en las siguientes garantías formales \cite{ma2026laasso}:
+
+\begin{itemize}
+    \item \textbf{Seguridad de Verificador Designado (\textit{Designated Verifier Security}):} Debido a la seguridad IND-CPA del esquema de cifrado Kyber sobre el problema Module-LWE, cualquier intermediario que no posea la clave privada $vsk$ es incapaz de descifrar $\text{tok}_1$ para extraer la clave $K$ \cite{ma2026laasso}.
+    
+    \item \textbf{Indistinguibilidad del Token frente a Ruido Uniforme:} Para un atacante que escuche el canal público, la combinación del encapsulamiento con Kyber y el cifrado con AES asegura que la estructura del token $\text{tok} = (\text{tok}_1, \text{tok}_2)$ sea computacionalmente indistinguible de secuencias de ruido aleatorio uniforme sobre el alfabeto binario $\{0, 1\}^*$ \cite{ma2026laasso}. La ventaja de un adversario $\mathcal{A}$ para distinguir entre tokens pertenecientes a dos transacciones distintas viene acotada por \cite{ma2026laasso}:
+    \begin{equation}
+    \left| \Pr[\mathcal{A}(\text{tok}_0) = 1] - \Pr[\mathcal{A}(\text{tok}_1) = 1] \right| \le \text{negl}(\lambda)
+    \end{equation}
+    
+    \item \textbf{Paso a Canal Ciego de Transmisión (\textit{Blind Transmission Channel}):} El mediador queda relegado operacionalmente a actuar como un mero \textit{canal ciego de transmisión}. La terminal recibe el bloque cifrado $\text{tok}$, no puede leer su contenido ni evaluar si la prueba ZKP es válida o falsa, y se limita a reenviarlo al servidor central.
+\end{itemize}
+
+Esta ocultación profunda garantiza que el mediador no pueda almacenar credenciales ni perfilar al usuario, protegiendo de forma absoluta la privacidad de la comunicación y previniendo ataques de repetición mediante la verificación centralizada del identificador único de ticket $\mathbf{t}$ en el registro de consumo del servidor \cite{ma2026laasso}.

@@ -1,0 +1,319 @@
+\subsection{Entorno experimental}
+\label{sec:experimental-environment}
+
+Todos los experimentos fueron ejecutados bajo el mismo en   torno de hardware y software.
+La Tabla~\ref{tab:environment} documenta la configuración utilizada con el objetivo de
+facilitar la reproducibilidad de los resultados.
+
+\begin{table}[H]
+\centering
+\caption{Entorno utilizado para ejecutar los experimentos.}
+\label{tab:environment}
+\begin{tabularx}{0.9\textwidth}{lY}
+\toprule
+\textbf{Elemento} & \textbf{Configuración} \\
+\midrule
+
+Procesador &
+\todoresult{modelo exacto de CPU} \\
+
+Arquitectura &
+\todoresult{x86\_64, ARM64, etc.} \\
+
+Núcleos físicos &
+\todoresult{valor} \\
+
+Núcleos lógicos &
+\todoresult{valor} \\
+
+Memoria RAM &
+\todoresult{capacidad total} \\
+
+Sistema operativo &
+\todoresult{distribución y versión} \\
+
+Kernel &
+\todoresult{versión} \\
+
+Docker &
+\todoresult{versión} \\
+
+Imagen base &
+\todoresult{imagen y versión} \\
+
+SageMath &
+\todoresult{versión} \\
+
+Python &
+\todoresult{versión} \\
+
+Biblioteca criptográfica &
+\todoresult{nombre y versión} \\
+
+Código del experimento &
+\todoresult{commit Git evaluado} \\
+
+Fecha de ejecución &
+\todoresult{fecha} \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Todos los candidatos fueron ejecutados sobre el mismo hardware y utilizando el mismo
+mecanismo de instrumentación. Durante la toma principal de resultados se evitó ejecutar
+aplicaciones ajenas al experimento que pudieran introducir carga significativa sobre
+el sistema.
+
+
+% ============================================================
+\subsection{Configuración criptográfica}
+\label{sec:crypto-configuration}
+
+Los parámetros criptográficos empleados para cada candidato se presentan en la
+Tabla~\ref{tab:crypto-parameters}.
+
+\begin{table}[H]
+\centering
+\caption{Parámetros criptográficos utilizados en cada implementación.}
+\label{tab:crypto-parameters}
+\small
+\begin{tabularx}{\textwidth}{lYYYY}
+\toprule
+\textbf{Protocolo} &
+\textbf{Dimensión} &
+\textbf{Módulo / curva} &
+\textbf{Distribución / error} &
+\textbf{Otros parámetros} \\
+\midrule
+
+ECDSA &
+N/A &
+\todoresult{curva} &
+N/A &
+\todoresult{hash, codificación, etc.} \\
+
+LWE estándar &
+\todoresult{$n$, $m$} &
+\todoresult{$q$} &
+\todoresult{$\chi_s$, $\chi_e$, $\sigma$} &
+\todoresult{otros} \\
+
+Binary-LWE &
+\todoresult{$n$, $m$} &
+\todoresult{$q$} &
+\todoresult{secreto y error} &
+\todoresult{otros} \\
+
+Ring-LWE &
+\todoresult{$n$} &
+\todoresult{$q$, anillo} &
+\todoresult{distribuciones} &
+\todoresult{polinomio/modulus} \\
+
+LWR &
+\todoresult{$n$, $m$} &
+\todoresult{$q$, $p$} &
+\todoresult{distribuciones} &
+\todoresult{redondeo} \\
+
+LWE propuesto &
+\todoresult{parámetros} &
+\todoresult{parámetros} &
+\todoresult{parámetros} &
+\todoresult{parámetros} \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Los parámetros fueron seleccionados buscando un nivel de seguridad comparable entre
+los candidatos. Cuando no fue posible establecer una equivalencia exacta, esta
+limitación se indica explícitamente en la Sección~\ref{sec:security-evaluation}.
+
+
+% ============================================================
+\subsection{Diseño de los experimentos}
+\label{sec:experimental-design}
+
+\subsubsection{Número de ejecuciones}
+
+Cada operación fue ejecutada:
+
+\begin{equation}
+    N = \todoresult{número de iteraciones}
+\end{equation}
+
+veces por configuración.
+
+Antes de iniciar la toma de datos se realizaron:
+
+\begin{equation}
+    N_{\text{warm-up}} =
+    \todoresult{número de iteraciones de calentamiento}
+\end{equation}
+
+ejecuciones de calentamiento que no fueron incluidas en los resultados finales.
+
+\subsubsection{Estadísticos reportados}
+
+Para evitar representar el rendimiento mediante una única medición, para cada operación
+se calcularon los siguientes estadísticos:
+
+\begin{itemize}
+    \item media aritmética;
+    \item mediana;
+    \item desviación estándar;
+    \item mínimo;
+    \item máximo;
+    \item percentil 95;
+    \item percentil 99.
+\end{itemize}
+
+
+
+% ============================================================
+\subsection{Métricas evaluadas}
+\label{sec:metrics}
+
+Las métricas utilizadas se agrupan en siete dimensiones principales:
+
+\begin{enumerate}
+    \item rendimiento computacional;
+    \item consumo de recursos;
+    \item comunicación;
+    \item seguridad;
+    \item complejidad de implementación;
+    \item características operacionales y experiencia de usuario;
+    \item madurez y facilidad de despliegue.
+\end{enumerate}
+
+
+% ============================================================
+\subsubsection{Rendimiento computacional}
+
+Para cada protocolo se mide el tiempo requerido por:
+
+\begin{itemize}
+    \item generación de claves;
+    \item generación del reto;
+    \item generación de la respuesta;
+    \item verificación;
+    \item autenticación completa.
+\end{itemize}
+
+Las mediciones se reportan en milisegundos.
+
+Adicionalmente se calcula el throughput:
+
+\begin{equation}
+    R =
+    \frac{N_{\text{auth}}}
+         {T_{\text{total}}},
+\end{equation}
+
+expresado en autenticaciones por segundo.
+
+
+% ============================================================
+\subsubsection{Consumo de memoria y almacenamiento}
+
+Para cada implementación se estudian:
+
+\begin{itemize}
+    \item memoria RAM promedio;
+    \item memoria RAM máxima;
+    \item tamaño de la clave pública;
+    \item tamaño de la clave privada;
+    \item tamaño de parámetros públicos adicionales;
+    \item estado temporal requerido durante una autenticación;
+    \item almacenamiento persistente requerido por usuario.
+\end{itemize}
+
+Los tamaños de estructuras criptográficas se calculan utilizando su representación
+serializada real y no únicamente su representación matemática abstracta.
+
+
+% ============================================================
+\subsubsection{Comunicación}
+
+El volumen de comunicación se calcula utilizando los bytes efectivamente serializados
+por la aplicación.
+
+Para una autenticación:
+
+\begin{equation}
+    B_{\text{auth}}
+    =
+    B_{\text{request}}
+    +
+    B_{\text{challenge}}
+    +
+    B_{\text{response}}
+    +
+    B_{\text{metadata}}.
+\end{equation}
+
+Además se registra:
+
+\begin{itemize}
+    \item número de mensajes intercambiados;
+    \item número de viajes de ida y vuelta (\textit{round trips});
+    \item tamaño máximo de un mensaje;
+    \item cantidad total de bytes transmitidos.
+\end{itemize}
+
+
+% ============================================================
+\subsubsection{Seguridad}
+
+La evaluación de seguridad considera:
+
+\begin{itemize}
+    \item problema matemático subyacente;
+    \item parámetros utilizados;
+    \item estimación de seguridad clásica;
+    \item estimación de seguridad frente a adversarios cuánticos;
+    \item ataques conocidos relevantes;
+    \item sensibilidad a una selección incorrecta de parámetros;
+    \item requisitos de aleatoriedad;
+    \item probabilidad de fallo cuando sea aplicable;
+    \item vulnerabilidades derivadas de la implementación.
+\end{itemize}
+
+
+% ============================================================
+\subsubsection{Complejidad de implementación}
+
+La dificultad de implementación no se asigna únicamente mediante una valoración
+subjetiva. Se consideran los siguientes factores:
+
+\begin{itemize}
+    \item cantidad de primitivas criptográficas necesarias;
+    \item cantidad de parámetros configurables;
+    \item líneas de código asociadas con la implementación criptográfica;
+    \item número y naturaleza de dependencias externas;
+    \item necesidad de aritmética especializada;
+    \item complejidad del muestreo aleatorio;
+    \item complejidad de serialización;
+    \item manejo de estado;
+    \item disponibilidad de bibliotecas consolidadas.
+\end{itemize}
+
+
+% ============================================================
+\subsubsection{Características operacionales}
+
+Para estudiar las implicaciones en un sistema real se consideran:
+
+\begin{itemize}
+    \item número de pasos requeridos durante el registro;
+    \item número de pasos requeridos durante una autenticación;
+    \item necesidad de almacenar secretos en el dispositivo del usuario;
+    \item necesidad de servidor en línea;
+    \item posibilidad de verificación fuera de línea;
+    \item necesidad de mantener estado por usuario;
+    \item procedimiento de renovación de claves;
+    \item procedimiento ante compromiso de credenciales;
+    \item requerimientos de infraestructura adicionales.
+\end{itemize}

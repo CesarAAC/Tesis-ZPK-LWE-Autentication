@@ -308,7 +308,32 @@ class BenchmarkRunner:
         system_parameters = protocol.generate_system_parameters(**parameters)
         public_key, private_key = protocol.generate_keypair(system_parameters, **parameters)
         challenge = protocol.generate_challenge(system_parameters, public_key)
-        response = protocol.solve_challenge(system_parameters, private_key, challenge)
+
+        def fresh_verification() -> Callable[[], Any]:
+            # A verifier may keep single-use state (for example a spent-ticket log).
+            # Every measured verification gets its own challenge and response, built
+            # outside the measured region, so repetitions never measure the rejection
+            # of a replay instead of a verification.
+            fresh_challenge = protocol.generate_challenge(system_parameters, public_key)
+            fresh_response = protocol.solve_challenge(
+                system_parameters,
+                private_key,
+                fresh_challenge,
+            )
+
+            def verify() -> None:
+                if not protocol.verify_response(
+                    system_parameters,
+                    public_key,
+                    fresh_challenge,
+                    fresh_response,
+                ):
+                    raise BenchmarkExecutionError(
+                        f"'{protocol.name}' rechazó una respuesta válida durante la "
+                        "medición de memoria."
+                    )
+
+            return verify
 
         operations: dict[str, Callable[[], Any]] = {
             "setup": lambda: protocol.generate_system_parameters(**parameters),
@@ -319,12 +344,6 @@ class BenchmarkRunner:
                 private_key,
                 challenge,
             ),
-            "verify": lambda: protocol.verify_response(
-                system_parameters,
-                public_key,
-                challenge,
-                response,
-            ),
             "authentication": lambda: self._full_authentication(
                 protocol,
                 system_parameters,
@@ -332,9 +351,15 @@ class BenchmarkRunner:
                 private_key,
             ),
         }
+        measured_order = ("setup", "keygen", "challenge", "response", "verify", "authentication")
 
-        for operation_name, operation in operations.items():
+        for operation_name in measured_order:
             for iteration in range(self.config.memory_iterations):
+                operation = (
+                    fresh_verification()
+                    if operation_name == "verify"
+                    else operations[operation_name]
+                )
                 _, observation = observe_memory(
                     operation,
                     self.config.memory_sample_interval_ms,

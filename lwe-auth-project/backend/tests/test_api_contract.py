@@ -13,7 +13,7 @@ class ApiContractTests(unittest.TestCase):
     def test_catalog_exposes_all_candidates_and_only_complete_ones_are_available(self) -> None:
         methods = self.client.get('/api/v1/methods')
         self.assertEqual(methods.status_code, 200)
-        self.assertEqual(methods.json(), {'available_methods': ['ecdsa', 'standard_lwe', 'binary_lwe', 'ring_lwe', 'lwr']})
+        self.assertEqual(methods.json(), {'available_methods': ['ecdsa', 'standard_lwe', 'binary_lwe', 'ring_lwe', 'lwr', 'proposed_lwe']})
 
         catalog = self.client.get('/api/v1/protocols')
         self.assertEqual(catalog.status_code, 200)
@@ -128,6 +128,64 @@ class ApiContractTests(unittest.TestCase):
             json={'protocol_name': 'standard_lwe', 'parameters': {'kappa': 5}},
         )
         self.assertEqual(key_response.status_code, 400)
+
+    def test_proposed_lwe_http_round_trip_and_replay(self) -> None:
+        key_response = self.client.post(
+            '/api/v1/generate_keys',
+            json={'protocol_name': 'proposed_lwe', 'parameters': {}},
+        )
+        self.assertEqual(key_response.status_code, 200)
+        material = key_response.json()
+        # The decryption key of the verifier never leaves the server process.
+        self.assertEqual(
+            set(material['system_parameters']),
+            {'protocol', 'parameters', 'rho', 'vpk'},
+        )
+        effective = material['effective_parameters']
+        self.assertEqual(
+            (effective['d'], effective['k'], effective['q'], effective['eta']),
+            (256, 3, 3329, 2),
+        )
+        self.assertEqual(effective['q_proof'], 8380417)
+
+        challenge = self.client.post(
+            '/api/v1/challenge',
+            json={
+                'protocol_name': 'proposed_lwe',
+                'system_parameters': material['system_parameters'],
+                'public_key': material['public_key'],
+            },
+        ).json()['challenge']
+        response = self.client.post(
+            '/api/v1/solve',
+            json={
+                'protocol_name': 'proposed_lwe',
+                'system_parameters': material['system_parameters'],
+                'private_key': material['private_key'],
+                'challenge': challenge,
+            },
+        ).json()['response']
+        self.assertEqual(set(response), {'tok1', 'tok2'})
+
+        verify_request = {
+            'protocol_name': 'proposed_lwe',
+            'system_parameters': material['system_parameters'],
+            'public_key': material['public_key'],
+            'challenge': challenge,
+            'response': response,
+        }
+        first = self.client.post('/api/v1/verify', json=verify_request)
+        self.assertEqual(first.json(), {'is_valid': True})
+        replay = self.client.post('/api/v1/verify', json=verify_request)
+        self.assertEqual(replay.json(), {'is_valid': False})
+
+    def test_proposed_lwe_rejects_a_changed_manuscript_parameter_with_400(self) -> None:
+        key_response = self.client.post(
+            '/api/v1/generate_keys',
+            json={'protocol_name': 'proposed_lwe', 'parameters': {'q': 12289}},
+        )
+        self.assertEqual(key_response.status_code, 400)
+
 
 if __name__ == '__main__':
     unittest.main()

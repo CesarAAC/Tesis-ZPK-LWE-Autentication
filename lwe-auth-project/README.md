@@ -7,7 +7,7 @@ Repositorio experimental para comparar, bajo una metodología común y reproduci
 3. `binary_lwe` — identificación Fiat–Shamir con abortos (NIZK) sobre LWE con secreto binario.
 4. `ring_lwe` — identificación Fiat–Shamir con abortos (NIZK) sobre Ring-LWE en $Z_q[x]/(x^n+1)$.
 5. `lwr` — identificación Fiat–Shamir con abortos (NIZK) sobre Learning With Rounding (LWR).
-6. `proposed_lwe` — protocolo diseñado en la tesis (**pendiente**).
+6. `proposed_lwe` — PQLite-Auth v2, el protocolo diseñado en la tesis: prueba Fiat–Shamir con abortos sobre MLWE con módulo `q' = 8380417`, y sobre `q = 3329` el token oculto con ML-KEM-768 + AES-256-GCM, los tickets de un solo uso y el acuerdo de clave de sesión.
 
 El objetivo del repositorio no es producir un “ganador” automático. El framework registra evidencia comparable sobre rendimiento, memoria, tamaños serializados, comunicación, almacenamiento, comportamiento proyectado bajo distintas redes, complejidad de implementación y metadatos de reproducibilidad. Las afirmaciones de seguridad, madurez y arquitectura se almacenan aparte y deben incluir evidencia explícita.
 
@@ -17,10 +17,11 @@ El objetivo del repositorio no es producir un “ganador” automático. El fram
 
 ## Estado actual
 
-- Implementados completamente: `ecdsa`, `standard_lwe`, `binary_lwe`, `ring_lwe` y `lwr`.
+- Implementados completamente los seis candidatos: `ecdsa`, `standard_lwe`, `binary_lwe`, `ring_lwe`, `lwr` y `proposed_lwe`.
 - Los cuatro candidatos de retículos son identificación **Fiat–Shamir con abortos**: pruebas no interactivas de conocimiento cero en el modelo de oráculo aleatorio programable; ver [Candidatos de retículos](#candidatos-de-retículos-identificación-fiatshamir-con-abortos).
-- `backend/crypto_core/lwe/` contiene primitivas reutilizables (muestreo con CSPRNG, codificación, aritmética negacíclica, redondeo LWR y helpers Sage de keygen); no son protocolos de autenticación por sí solas.
-- `proposed_lwe` permanece reservado en el catálogo con `implementation_factory=None` y falla de forma cerrada.
+- `backend/crypto_core/lwe/` contiene primitivas reutilizables (muestreo con CSPRNG, codificación, aritmética negacíclica y de módulos, redondeo LWR, descomposición en bits altos y bajos, reconciliación de Peikert y helpers Sage de keygen); no son protocolos de autenticación por sí solas. `backend/crypto_core/token_hiding.py` envuelve ML-KEM-768 y AES-256-GCM.
+- `proposed_lwe` implementa PQLite-Auth v2 con módulo dual. Su prueba es una NIZK en el modelo de oráculo aleatorio programable, también frente al verificador designado. Con el rango del manuscrito (`k_proof = 3`) la dureza estimada de la clave de identidad queda **por debajo del objetivo de 128 bits**, y varias definiciones tuvieron que fijarse; ver [Protocolo propuesto](#protocolo-propuesto-pqlite-auth-v2-proposed_lwe).
+- Una entrada del catálogo sin `implementation_factory` sigue fallando de forma cerrada.
 - Los parámetros por defecto son experimentales; su nivel de seguridad debe estimarse y documentarse por separado antes de usarlos como evidencia de tesis.
 - Ya están preparados el contrato común, benchmark runner, pruebas de conformidad, mediciones, exportación JSON/CSV, persistencia PostgreSQL, proyecciones de red y formatos para assessments cualitativos y estimaciones de seguridad.
 
@@ -278,6 +279,132 @@ No se afirma nada más allá de lo siguiente.
 
 ---
 
+# Protocolo propuesto: PQLite-Auth v2 (`proposed_lwe`)
+
+Implementado en `backend/crypto_core/protocols/proposed_lwe.py`. Tiene dos fuentes de verdad criptográficas: `Document/capitulos/04-Protocolo Propio.tex` y la instrucción de **módulo dual** de los autores (su «Opción A»), que sustituye la prueba del capítulo por Fiat–Shamir con abortos sobre un segundo módulo. Donde difieren, manda la instrucción. Supera el *conformance gate* sin modificarlo y entra al benchmark como los demás candidatos.
+
+> **Decisión pendiente de los autores: el rango de la capa de prueba.** Con el rango del manuscrito (`k_proof = 3`) la clave de identidad es una instancia MLWE de dimensión 768 sobre un módulo de 23 bits. La metodología Core-SVP la sitúa en torno a 2^79 operaciones clásicas (2^72 cuánticas): por debajo del nivel 1 de NIST que declara el manuscrito y por debajo de los otros candidatos de retículos de este repositorio (dimensión 1024, en torno a 2^117). Con `k_proof = 4` queda en torno a 2^117 clásicas y 2^106 cuánticas. El valor por defecto sigue siendo 3 porque es el que fija el manuscrito y la instrucción no lo cambió; pasar a 4 es un parámetro. Ver [Estimación de dureza de la capa de prueba](#estimación-de-dureza-de-la-capa-de-prueba).
+
+## Dos capas
+
+| Capa | Módulo | Qué vive ahí |
+|---|---|---|
+| Prueba | `q' = 8380417` (23 bits, el primo de ML-DSA) | Clave de identidad `t = A'·s + e` y la prueba de conocimiento. |
+| Transporte | `q = 3329` (manuscrito) | Ocultación del token con ML-KEM-768 + AES-256-GCM y acuerdo de clave de sesión con reconciliación de Peikert. |
+
+La prueba no cabe en `q = 3329` (`DualModulusRationaleTests`): para que el muestreo de rechazo independice la respuesta del secreto hace falta una máscara de anchura `γ₁ ≈ 15 400` (10 % de aceptación con 768 coeficientes y `β = 46`), frente a `q/2 = 1664`; y entre los pasos de redondeo que dividen a `q − 1`, el mejor da una aceptación de 6.6·10⁻²⁰ para la condición de bits bajos.
+
+## Flujo y mapeo al contrato
+
+`k'` es `k_proof`, `α = 2·γ₂` y `β = eta · kappa`.
+
+| Contrato | PQLite-Auth v2 |
+|---|---|
+| `generate_system_parameters` | `rho` (32 bytes) y par ML-KEM-768 del verificador. `system_parameters = {rho, vpk}`. `A' ∈ R_q'^{k'×k'}` y `A ∈ R_q^{3×3}` se expanden con SHAKE-128 desde semillas distintas derivadas de `rho`. `vsk` queda en el almacén del proceso. |
+| `generate_keypair` | `s, e ← CBD(2)^{k'}`, `t = A'·s + e mod q'`. Clave pública `t` (2208 B). Clave privada `s` y `e` (288 B cada una) más `H(t)` (32 B). |
+| `generate_challenge` | El verificador emite un ticket de un solo uso (256 bits) y la marca de tiempo `nu`. |
+| `solve_challenge` | `y` uniforme en `[−(γ₁−1), γ₁−1]`, `w = A'·y`, `w₁ = HighBits(w, α)`, `c̃ = H(A', t, w₁, ticket, nu)`, `c = SampleInBall(c̃)`, `z = y + c·s`. Reintenta si `‖z‖∞ ≥ γ₁ − β` o si `‖LowBits(w − c·e, α)‖∞ ≥ γ₂ − β`. Token: `tok1` = cifrado ML-KEM-768, `tok2 = AES-256-GCM_K(z, c̃, ticket, nu)`. |
+| `verify_response` | Descifra, ventana temporal, registro de tickets consumidos, exige `‖z‖∞ < γ₁ − β`, calcula `w₁' = HighBits(A'·z − c·t, α)` y acepta si `H(A', t, w₁', ticket, nu) = c̃`. Devuelve `bool`. |
+| Fuera del contrato | `generate_key_agreement_share`, `generate_reconciliation_hint`, `reconcile_session_key`: acuerdo de clave de sesión por reconciliación de Peikert sobre `q = 3329`. |
+
+**Por qué una prueba honesta siempre verifica.** `A'·z − c·t = A'·y + c·A'·s − c·(A'·s + e) = w − c·e`. Como `‖c·e‖∞ ≤ β` y el probador solo publica `z` cuando `‖LowBits(w − c·e)‖∞ < γ₂ − β`, sumar `c·e` no cambia los bits altos: `HighBits(w − c·e) = HighBits(w) = w₁`, y el verificador calcula el hash sobre la misma entrada. No hay error de completitud; lo único aleatorio es cuántos intentos necesita el probador. Medido: 20 000 de 20 000 autenticaciones honestas aceptadas con 40 claves (`k_proof = 3`) y 10 000 de 10 000 con 20 claves (`k_proof = 4`).
+
+## Parámetros
+
+Fijos; cualquier otro valor se rechaza: `d = 256`, `k = 3`, `q = 3329`, `eta = 2` (manuscrito) y `q_proof = 8380417` (instrucción de módulo dual).
+
+Ni el manuscrito ni la instrucción fijan los siguientes. Son ajustables en `benchmarking/configs/default.json`:
+
+| Parámetro | Por defecto | Origen del valor |
+|---|---|---|
+| `k_proof` | 3 | Rango de la capa de prueba; el `k` del manuscrito. Admite de 3 a 8. |
+| `kappa` | 23 | Peso del desafío; el menor que da al menos 2^128 desafíos con `d = 256`. |
+| `beta` | 46 | Derivado, no ajustable: `eta · kappa`, el máximo de `‖c·s‖∞` y `‖c·e‖∞`. |
+| `gamma1` | 131072 = 2^17 | Anchura de la máscara. Valor de ML-DSA-44. |
+| `gamma2` | 95232 = (q' − 1)/88 | Medio paso de redondeo; `2·gamma2` debe dividir a `q' − 1`. Valor de ML-DSA-44. |
+| `time_window_seconds` | 300 | `Δt` del manuscrito. |
+
+Probabilidad de que un intento del probador se publique:
+
+```text
+p = ((2(γ₁ − β) − 1) / (2γ₁ − 1))^(k'·d) · ((2(γ₂ − β) − 1) / (2γ₂))^(k'·d)
+```
+
+El primer factor no depende de la clave: sea cual sea `c·s`, mientras `‖c·s‖∞ ≤ β`, el mismo número de máscaras lleva a un `z` aceptado. El segundo trata `w − c·e` como uniforme. Con los valores por defecto `p = 0.764 · 0.687 = 0.525` (medido: 0.527, 1.90 intentos de media, máximo 15 en 20 000 pruebas); con `k_proof = 4`, `p = 0.423`. Un juego de parámetros con `p < 0.05` se rechaza.
+
+## Lecturas que hubo que fijar
+
+Ninguna es una corrección silenciosa: cada una queda registrada aquí y en el docstring del módulo, y tiene su evidencia en `tests/test_proposed_lwe.py` (`ManuscriptDeviationTests`, `DualModulusRationaleTests`).
+
+| # | Fuente | Problema | Implementado |
+|---|---|---|---|
+| 1 | La instrucción cambia el módulo de la prueba; el manuscrito fija `k = 3` para `q = 3329` | El rango de la capa de prueba no está especificado, y la dureza depende de él. | `k_proof` ajustable, por defecto 3. |
+| 2 | `L = H(…) ∈ R_q^{k×k}`, `z = s·L + y` | La cancelación `A(sL) − (As + e)L = −eL` exige `A·L = L·A`. Con una matriz obtenida por hash el residuo de un probador honesto es ≈ q/2. | Desafío escalar `L = c·I`. |
+| 3 | `H: {0,1}* → R_q^{k×k}` sin distribución | Un `c` uniforme hace que `c·s` y `c·e` lleguen a q/2: no hay cota `β`. | `c` con `kappa` coeficientes `±1` y el resto cero, derivado con SHAKE-256. |
+| 4 | `γ₁` y `γ₂` no aparecen en ninguna fuente | Parámetros necesarios. | Los de ML-DSA-44, ajustables. |
+| 5 | `y ← CBD(2)`, cotas `β_z` y `β_e`, comprobación `‖A·z − t·L − w‖∞ ≤ β_e`, `w` dentro del token | Ese valor es exactamente `−c·e`: un token entrega la clave al verificador. Aun sin `w`, `z = c·s + y` con ruido acotado por 2 se resuelve por mínimos cuadrados con pocas respuestas. | Máscara uniforme ancha, las dos condiciones de rechazo y la comprobación por bits altos. `w` no viaja. |
+| 6 | `Δt` sin valor | Parámetro necesario. | 300 s, ajustable. |
+| 7 | No dice quién crea el ticket | El contrato exige un desafío del verificador. | El verificador emite `(ticket, nu)`; el token debe contener exactamente ese par. |
+| 8 | `tok1 = Kyber.Enc(vpk, K)` con `K` elegida por el cliente | Un KEM estándar no recibe la clave: la devuelve. | `tok1` = encapsulamiento ML-KEM-768; `K` = secreto encapsulado. |
+| 9 | Fórmula cerrada de `rec` | Equivale a `(⌊2w/q⌋ − v) mod 2`: no tolera ningún error. Con el ruido del propio protocolo, 99 % de las claves de 256 bits difieren. | `rec` de Peikert según la fuente citada (`w ∈ I_v + E`). |
+| 10 | Tabla de cuadrantes | Asigna bit 0 a `[0, q/2)`, pero la fórmula `⌊2w/q⌉ mod 2` asigna 0 a `[−q/4, q/4)`. | Se sigue la fórmula. |
+| 11 | `b_C`, `b_S`, `s_S`, `e_S`, `s_C` sin definir ni transporte | Sin ellos no hay acuerdo de clave. | Como en la fuente citada: `b_C = A·s_C + e_C`, `b_S = Aᵀ·s_S + e_S'`. El intercambio de cuotas queda a cargo de quien llama. |
+
+Decisiones de ingeniería: aritmética NumPy con convolución negacíclica directa (no NTT ni objetos Sage; un test la contrasta con el anillo cociente de SageMath para ambos módulos); 23 bits por coeficiente para `t`, 18 para `z`, 3 para `s` y `e`, 12 en la capa de transporte; `A'` se expande desde `H(rho)` con una etiqueta propia para que no comparta flujo SHAKE con `A`; AES-256-GCM con nonce aleatorio; `H(A')` y `H(t)` como entradas del hash para que el cliente solo guarde `s`, `e` y `H(t)`; clave pública sin comprimir (sin `Power2Round` ni pistas de Dilithium).
+
+## Estado de seguridad de `proposed_lwe`
+
+Enunciado con precisión; no se afirma nada más.
+
+- **Qué es la prueba.** La plantilla de Dilithium sin compresión de clave pública (Figura 1 de su especificación de ronda 3), con matriz cuadrada, secretos `CBD(2)` y `(ticket, nu)` en el lugar del mensaje.
+- **Conocimiento cero.** Es una NIZK en el modelo de oráculo aleatorio programable. El simulador elige `c̃`, deriva `c`, muestrea `z` uniforme con `‖z‖∞ < γ₁ − β`, reintenta si `‖LowBits(A'·z − c·t)‖∞ ≥ γ₂ − β` y programa `H(A', t, HighBits(A'·z − c·t), ticket, nu) = c̃`. Las transcripciones reales tienen esa distribución porque `‖c·s‖∞ ≤ β` hace que un `z` aceptado sea uniforme en su caja sea cual sea `s`, y la segunda condición solo depende de `(z, c, t)`. El verificador designado ve exactamente `(z, c̃)`, así que el argumento lo cubre. Los intentos abortados nunca se envían. `ZeroKnowledgeEvidenceTests` ejecuta ese simulador y comprueba que el verificador acepta su salida cuando el oráculo está programado; es evidencia, no una demostración.
+- **Solidez.** Es un argumento de conocimiento para una relación **relajada**: dos transcripciones aceptadas con el mismo `w₁` y `c ≠ c'` dan `(z − z', u, c − c')` cortos con `A'·(z − z') + u = (c − c')·t`. La resistencia a la suplantación descansa en MLWE (que `t` sea pseudoaleatorio) y en MSIS sobre `[A' | I | t]`, con el rango y el módulo de la capa de prueba.
+- **No analizado:** el modelo de oráculo aleatorio cuántico y los canales laterales. El número de intentos del probador se refleja en su tiempo de ejecución, aunque su distribución no depende de la clave; NumPy no es de tiempo constante.
+- **La prueba es transferible.** Una vez descifrado, `(z, c̃)` es verificable por cualquiera para ese `(ticket, nu)`: el verificador puede mostrarlo a terceros. La ocultación del token limita quién puede leer la prueba, no quién puede comprobarla.
+- **Terceros** solo ven el token, protegido por ML-KEM-768 y AES-256-GCM.
+- **Acuerdo de clave:** concuerda para todo error hasta 415 (hay entradas que fallan en 416, aunque q/8 = 416.125); el bit de clave tiene sesgo 1665/3329 por no usar el *doubling* de Peikert; reutilizar cuotas entre sesiones permitiría ataques de fuga de señal.
+
+## Estimación de dureza de la capa de prueba
+
+Core-SVP con la metodología de las especificaciones de Kyber y Dilithium (ataque primal uSVP para MLWE; ataque en norma infinito para MSIS con cota `max(γ₁ − β, γ₂ + 1) = 131026`). `b` es el tamaño de bloque BKZ; el coste es `2^(0.292·b)` clásico y `2^(0.265·b)` cuántico.
+
+| `k_proof` | MLWE (`t = A'·s + e`) | MSIS (solidez) | Clave pública | Token | Aceptación por intento |
+|---|---|---|---|---|---|
+| 3 (por defecto) | `b = 270`: 2^79 / 2^72 | `b = 343`: 2^100 / 2^91 | 2208 B | 2916 B | 0.525 |
+| 4 | `b = 400`: 2^117 / 2^106 | `b = 503`: 2^147 / 2^133 | 2944 B | 3492 B | 0.423 |
+| 5 | `b = 535`: 2^156 / 2^142 | `b = 669`: 2^196 / 2^177 | 3680 B | 4068 B | 0.341 |
+| 6 | `b = 675`: 2^197 / 2^179 | `b = 841`: 2^246 / 2^223 | 4416 B | 4644 B | 0.275 |
+
+Referencias con la misma metodología: ML-KEM-512 `b = 406` (2^118), ML-DSA-44 `b = 423` (2^123), ML-KEM-768 `b = 625` (2^182). La especificación de Dilithium (ronda 3, Tabla 3) incluye un juego de rango 3 con `η = 3` uniforme, que llama «1-» y sitúa por debajo del nivel 1 de NIST: `b = 305`, 2^89; la capa de prueba con rango 3 y `CBD(2)` es más débil que ese juego. La capa de transporte de este protocolo (rango 3 sobre `q = 3329`) está en el nivel de ML-KEM-768; la capa de prueba no, porque el mismo ruido `CBD(2)` sobre un módulo 2500 veces mayor es una instancia más fácil. Subir `eta` casi no ayuda (`CBD(8)` con rango 3 da `b = 306`) y encarece `β`.
+
+Estas cifras salen de una reimplementación propia de esos scripts, validada contra los tamaños de bloque publicados: reproduce exactamente los de Dilithium 2, 3 y 5 para MLWE y MSIS, con una diferencia de hasta 4 los de sus juegos «1--», «1-» y «5+», y con menos de 1 % los de Kyber. No están almacenadas como *security assessment* del repositorio: antes de usarlas como evidencia de tesis deben repetirse con el *lattice estimator* y registrarse con `benchmarking.security_cli`.
+
+## Estado del verificador
+
+`system_parameters` es público por contrato y el registro crea un objeto nuevo en cada llamada, así que `vsk` y el registro de tickets consumidos viven en un almacén del proceso, indexado por `H(vpk)`. Consecuencias:
+
+- `verify_response` tiene estado: verificar dos veces el mismo token devuelve `False` la segunda vez.
+- El ticket se consume antes de comprobar las ecuaciones del retículo, como indica el manuscrito; un token inválido también lo gasta.
+- Un despliegue con varios procesos necesitaría un almacén compartido.
+
+## Tamaños y tiempos medidos
+
+| Artefacto | Bytes crudos, `k_proof = 3` | JSON canónico (lo que mide el runner) | Bytes crudos, `k_proof = 4` |
+|---|---|---|---|
+| `system_parameters` (`rho`, `vpk`) | 1216 | 2247 | 1216 |
+| Clave pública `t` | 2208 | 2952 | 2944 |
+| Clave privada (`s`, `e`, `H(t)`) | 608 | 850 | 800 |
+| Desafío (`ticket`, `nu`) | 40 | 76 | 40 |
+| Token (`tok1`, `tok2`) | 2916 | 3913 | 3492 |
+| Cuota del acuerdo de clave `b` | 1152 | 1544 | 1152 |
+| Pista de reconciliación `v` | 32 | 52 | 32 |
+
+El token es `1088 + 12 + (1728 + 32 + 32 + 8) + 16` bytes: cifrado ML-KEM-768, nonce, `z` a 18 bits por coeficiente, `c̃`, ticket, `nu` y etiqueta de AES-GCM. Es menor que los ≈ 3.39 KB del manuscrito porque el compromiso `w` ya no viaja; a cambio la clave pública pasa de 1152 a 2208 bytes.
+
+Corrida exploratoria de 40 iteraciones, no evidencia de tesis: enrolamiento ≈ 0.5 ms, respuesta ≈ 1.0 ms, verificación ≈ 0.6 ms, autenticación completa ≈ 1.8 ms (≈ 2.8 ms con `k_proof = 4`). El acuerdo de clave no forma parte del contrato y el runner no lo mide: generar cada cuota ≈ 0.4 ms, pista ≈ 0.2 ms, reconciliación ≈ 0.15 ms.
+
+---
+
 # Cómo implementar un candidato pendiente
 
 Esta sección está pensada para que cualquier integrante del proyecto pueda agregar un protocolo sin tener que modificar el framework de benchmarking.
@@ -518,6 +645,8 @@ Limitación importante:
 - `tracemalloc` no observa toda la memoria nativa de Sage/cryptography.
 
 Por ello ambas medidas se conservan y deben interpretarse conjuntamente.
+
+Cada verificación medida usa un desafío y una respuesta frescos, generados fuera de la región medida. Un verificador puede tener estado de un solo uso (el registro de tickets de `proposed_lwe`): repetir la misma respuesta mediría el rechazo de un replay. Si una verificación medida es rechazada, la corrida falla.
 
 ## Tamaño de artefactos
 
@@ -955,6 +1084,8 @@ La respuesta incluye:
 - `effective_parameters`.
 
 Para los siguientes pasos, reenviar el mismo `system_parameters` recibido durante enrollment.
+
+Con `proposed_lwe`, `/verify` tiene estado: el servidor guarda la clave de descifrado del verificador y el registro de tickets, de modo que repetir la misma petición devuelve `is_valid: false`. El acuerdo de clave de sesión no está expuesto por HTTP.
 
 `/solve` es un endpoint de desarrollo para ejercitar el prototipo. En un sistema real, la operación que usa la clave privada debe ejecutarse en el cliente/prover que controla el secreto.
 

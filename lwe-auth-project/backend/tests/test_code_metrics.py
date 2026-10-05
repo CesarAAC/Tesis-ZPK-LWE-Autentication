@@ -22,6 +22,7 @@ def _source_files(protocol_id: str) -> list[str]:
 class CodeMetricsTests(unittest.TestCase):
     def test_standalone_protocol_counts_its_own_file_only(self) -> None:
         self.assertEqual(_source_files("ecdsa"), ["ecdsa.py"])
+        self.assertEqual(_source_files("proposed_lwe"), ["proposed_lwe.py"])
 
     def test_shared_templates_are_included_for_every_lattice_candidate(self) -> None:
         expected = {

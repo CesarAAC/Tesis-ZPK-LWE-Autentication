@@ -1,0 +1,44 @@
+\section{Introducción}
+
+\subsection{Generalidades}
+La autenticación de usuarios constituye uno de los problemas más complejos dentro de la seguridad de la información contemporánea. De acuerdo con múltiples análisis e informes del sector, entre el 67\% y el 80\% de los problemas globales de seguridad están directamente vinculados con la autenticación, la suplantación de credenciales y el robo de identidades \cite{identity_mfa}.
+
+A pesar de la evolución en las tecnologías de verificación mediante contraseñas de un solo uso (\textit{One-Time Passwords}, OTP), esquemas de doble factor basados en los estándares de la alianza FIDO y técnicas biométricas, estas alternativas aún presentan limitaciones considerables \cite{fido_alliance}:
+\begin{itemize}
+    \item \textbf{Contraseñas tradicionales:} Constituyen un mecanismo poco adecuado para las capacidades cognitivas humanas y obligan al usuario a ceder la totalidad de su secreto al sistema verificador.
+    \item \textbf{Autenticación biométrica:} Involucra información de identificación personal no modificable, lo que genera objeciones significativas en materia de privacidad y cumplimiento normativo .
+    \item \textbf{Esquemas de doble factor en servicios financieros:} En escenarios como redes de cajeros automáticos (ATM), la combinación de la tarjeta y el PIN implica entregar la totalidad del secreto a terceros y operadores de redes intermedias (e.g., Cirrus, Visa, MasterCard), comprometiendo la soberanía de los datos del usuario.
+\end{itemize}
+
+\subsection{Contexto de la Situación}
+El panorama actual de la seguridad de la información se encuentra condicionado por dos dinámicas críticas: la necesidad de proteger la identidad sin entregar credenciales sensibles y la inminente llegada de la computación cuántica 
+
+Por una parte, la autenticación convencional exige transmitir secretos legibles o equivalentes a través de nodos intermedios. Las Pruebas de Conocimiento Cero (\textit{Zero-Knowledge Proofs}, ZKP) ofrecen una alternativa criptográfica que permite a una parte probadora ($P$) demostrar a un verificador ($V$) que posee cierta información privada sin revelar un solo bit de dicho secreto.
+
+Por otra parte, la ejecución de algoritmos como el de Shor y Grover en computadores cuánticos amenaza la seguridad de los esquemas criptográficos tradicionales . Al transformar las funciones clásicas de una sola vía (como el logaritmo discreto, la factorización de enteros o el isomorfismo de grafos) en funciones fácilmente invertibles, la computación cuántica dejará inútiles los protocolos clásicos, haciendo imperativa la migración hacia primitivas resistentes a capacidades cuánticas de ataque (\textit{quantum-safe}).
+
+\subsection{Justificación}
+Frente a la vulnerabilidad de las credenciales tradicionales y la amenaza de adversarios cuánticos, surge la necesidad de contar con esquemas de autenticación que garanticen la soberanía de los datos del usuario y la robustez técnica frente a ataques clásicos y cuánticos.
+
+Los problemas matemáticos basados en retículas (\textit{lattices}), en particular, el problema \textit{Learning with Errors} (LWE) con distribución Gaussiana discreta permite construir funciones de una sola vía respaldadas por una reducción de seguridad del peor caso al caso promedio (\textit{worst-case to average-case reduction}). Esta propiedad garantiza que resolver una instancia aleatoria del sistema sea tan difícil como los problemas de retículos más complejos en el peor caso, manteniendo el cálculo inverso computacionalmente inviable tanto para la arquitectura tradicional Von-Neumann como para ordenadores cuánticos.
+
+
+La integración de las Pruebas de Conocimiento Cero (ZKP) con la solidez matemática de LWE atiende simultáneamente ambas problemáticas:
+\begin{enumerate}
+    \item Resuelve la exposición de secretos al verificar la identidad del usuario sin revelar sus credenciales.
+    \item Garantiza la seguridad del canal y la autenticación a largo plazo contra supercomputadoras cuánticas gracias a la complejidad multidimensional del problema LWE.
+\end{enumerate}
+
+\subsection{Objetivos}
+
+\subsubsection{Objetivo General}
+Definir el funcionamiento, robustez, alcance y riesgos de un protocolo de autenticación de conocimiento cero que sea resistente ante ataques cuánticos, en contraste con protocolos tradicionales, con el propósito de mejorar, para el presente y futuro previsible, la seguridad en sistemas que tengan un fuerte componente de autenticación.
+
+\subsubsection{Objetivos Específicos}
+\begin{enumerate}
+    \item Analizar los fundamentos matemáticos y las limitaciones de los protocolos \textit{Zero-Knowledge-Proof}.
+    \item Analizar los fundamentos matemáticos y las limitaciones del problema \textit{Learning with Errors}.
+    \item Diseñar e implementar un prototipo de protocolo que integre ambos conceptos con fines de autenticación segura.
+    \item Explorar las particularidades necesarias para el correcto funcionamiento del protocolo planteado.
+    \item Comparar los protocolos de autenticación convencionales más relevantes con el protocolo planteado.
+\end{enumerate}

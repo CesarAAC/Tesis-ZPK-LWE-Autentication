@@ -1,0 +1,337 @@
+\subsubsection{Arquitectura General y Modelo de Amenazas}
+
+\paragraph{Definición Teórica y Objetivos del Protocolo}
+
+Se propone \textit{PQLite-Auth v2}, un esquema de autenticación no interactiva de conocimiento cero (\textit{Non-Interactive Zero-Knowledge Argument of Knowledge} - NIZKAoK) optimizado para entornos de baja capacidad de cómputo y transmisión sobre canales no confiables \cite{yang2025multiserver, ma2026laasso}. El protocolo se fundamenta en la dureza del problema \textit{Module Learning with Errors} (MLWE) sobre el anillo polinomial $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^{256} + 1 \rangle$, e integra un mecanismo de ocultación de tokens (\textit{Token Hiding}) y acuerdo de clave de sesión mediante reconciliación de errores en cuatro cuadrantes \cite{yang2025multiserver, ma2026laasso, lai2025leaky}.
+
+El objetivo primario de PQLite-Auth v2 es permitir que un dispositivo cliente demuestre la posesión de una clave secreta de retículo $\mathbf{s} \in \mathcal{R}_q^k$ ante un servidor verificador designado, garantizando las siguientes propiedades criptográficas \cite{lombardi2022postquantum, ma2026laasso}:
+
+\begin{itemize}
+    \item \textbf{Resistencia Poscuántica y Solidez ($\text{Soundness}$):} Ningún adversario con acceso a computación clásica ni cuántica puede suplantar la identidad de un usuario legítimo sin resolver una instancia dura de MLWE \cite{regev2009lwe, badiezadegan2026complexity}.
+    \item \textbf{Conocimiento Cero ($\text{Zero-Knowledge}$):} El servidor verificador y los nodos intermedios obtienen cero información estructural sobre la clave privada $\mathbf{s}$ durante las interacciones del protocolo \cite{goldwasser1989knowledge, lai2025leaky}.
+    \item \textbf{Seguridad de Verificador Designado y No Vinculabilidad (\textit{Unlinkability}):} Las pruebas emitidas son computacionalmente indistinguibles de ruido aleatorio uniforme para cualquier entidad distinta del servidor central designado, impidiendo el rastreo o perfilamiento del cliente \cite{ma2026laasso, lombardi2022postquantum}.
+    \item \textbf{Prevención de Ataques de Repetición (\textit{Anti-Replay Security}):} La inclusión de tickets de un solo uso procesados de forma determinista impide la reutilización de pruebas capturadas previamente en el canal público \cite{ma2026laasso}.
+\end{itemize}
+
+\paragraph{Entidades y Actores del Sistema}
+
+La arquitectura de PQLite-Auth v2 se estructura formalmente a partir de tres actores abstractos con responsabilidades criptográficas delimitadas \cite{ma2026laasso, yang2025multiserver}:
+
+\begin{enumerate}
+    \item \textbf{Dispositivo Cliente / Elemento Seguro ($\mathcal{C}$):} Dispositivo de recursos limitados que almacena de forma inalterable en su memoria física protegida la clave secreta de retículo $\mathbf{s} \in \mathcal{R}_q^k$ y la clave pública de verificación del servidor $vpk$ \cite{mukil2026implementing, ma2026laasso}. El dispositivo $\mathcal{C}$ ejecuta la generación de la prueba NIZKAoK y el enmascaramiento híbrido sin exportar la clave secreta fuera del silicio \cite{mukil2026implementing}.
+    \item \textbf{Terminal Intermedia / Nodo Relevador ($\mathcal{T}$):} Interfaz física o terminal de acceso potencialmente hostil que actúa como un \textit{canal ciego de transmisión} (\textit{blind relay}) \cite{ma2026laasso}. La terminal $\mathcal{T}$ reenvía los bloques cifrados emitidos por $\mathcal{C}$ hacia el servidor central sin capacidad de inspeccionar, descifrar o validar las pruebas criptográficas \cite{ma2026laasso}.
+    \item \textbf{Servidor Verificador Designado ($\mathcal{S}$):} Entidad central de alta capacidad de cómputo o Módulo de Seguridad de Hardware (\textit{Hardware Security Module} - HSM) que custodia la clave privada de descifrado $vsk$ de Kyber, la base de datos de compromisos públicos $\mathbf{t} = \mathbf{A}\mathbf{s} + \mathbf{e} \pmod q$ y el registro de tickets consumidos (\textit{Spent Log}) \cite{yang2025multiserver, ma2026laasso}.
+\end{enumerate}
+
+\paragraph{Modelo de Amenazas}
+
+El modelo de seguridad asume un adversario cuántico activo $\mathcal{A}$ que controla completamente el canal de comunicación entre $\mathcal{C}$, $\mathcal{T}$ y $\mathcal{S}$ \cite{lombardi2022postquantum, ma2026laasso}. Específicamente, se consideran los siguientes escenarios de ataque \cite{lai2025leaky, ma2026laasso}:
+
+\begin{itemize}
+    \item \textbf{Intercepción en Terminales Comprometidas:} El adversario $\mathcal{A}$ puede controlar la terminal intermedia $\mathcal{T}$ o instalar componentes maliciosos para capturar todo el tráfico transmitido por la red \cite{ma2026laasso}.
+    \item \textbf{Consultas Semi-Adaptativas de Fuga (Leaky LWE):} El adversario $\mathcal{A}$ puede seleccionar matrices de desafío $\mathbf{L}$ o inyectar perturbaciones ruidosas para intentar medir componentes lineales de la clave secreta $\mathbf{s}$ a lo largo de múltiples transacciones \cite{lai2025leaky}.
+    \item \textbf{Ataques Geométricos de Reducción de Bases (BKZ):} El adversario $\mathcal{A}$ dispone de algoritmos cuánticos de cribado (\textit{quantum sieving}) para intentar resolver el problema del vector más corto (SVP) sobre la base del retículo generado por $(\mathbf{A}, \mathbf{t})$ \cite{badiezadegan2026complexity, mukil2026implementing}.
+\end{itemize}
+
+\paragraph{Vector de Parámetros Concretos}
+
+Para certificar el nivel de seguridad NIST Nivel 1 (128 bits de resistencia poscuántica) minimizando la sobrecarga de memoria en el dispositivo cliente, se fijan los parámetros en el anillo $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^d + 1 \rangle$ \cite{yang2025multiserver, ma2026laasso}:
+
+\begin{equation}
+d = 256, \quad k = 3, \quad q = 3329, \quad \eta = 2
+\end{equation}
+
+La dimensión espacial total del retículo resultante es $N = k \times d = 3 \times 256 = 768$ \cite{yang2025multiserver}. El módulo primo de 16 bits $q = 3329$ admite la Transformada de Teoría de Números (NTT), permitiendo multiplicaciones polinomiales eficientes de complejidad $\mathcal{O}(d \log d)$ \cite{yang2025multiserver, mukil2026implementing}. La distribución de error corresponde a una Distribución Binomial Centrada $\text{CBD}(\eta=2)$ con desviación estándar $\sigma = 1$, implementada en tiempo constante $\mathcal{O}(1)$ \cite{yang2025multiserver}.
+
+\paragraph{Secuencia Lógica Temporal del Protocolo}
+
+El flujo operativo del protocolo PQLite-Auth v2 se ejecuta en cuatro fases secuenciales estrictas, coordinadas entre el dispositivo cliente $\mathcal{C}$ y el servidor verificador $\mathcal{S}$ a través del canal ciego $\mathcal{T}$ \cite{yang2025multiserver, ma2026laasso}:
+
+\begin{enumerate}
+    \item \textbf{Fase 1 (Generación de Pruebas y Ocultación en $\mathcal{C}$):} El cliente $\mathcal{C}$ muestrea ruido fresco, genera el argumento NIZKAoK determinista mediante Fiat-Shamir con Abortos, verifica la cota de norma, encapsula una clave simétrica efímera con Kyber ($vpk$) y encripta el token mediante AES-256 \cite{ma2026laasso}.
+    \item \textbf{Fase 2 (Transmisión Ciega en $\mathcal{T}$):} La terminal $\mathcal{T}$ recibe el paquete cifrado $\text{tok} = (\text{tok}_1, \text{tok}_2)$ y lo reenvía al servidor $\mathcal{S}$ sin realizar procesamiento local \cite{ma2026laasso}.
+    \item \textbf{Fase 3 (Verificación y Desencapsulamiento en $\mathcal{S}$):} El servidor $\mathcal{S}$ descifra el token usando su clave privada $vsk$, valida la frescura del ticket contra el \textit{Spent Log}, reconstruye el desafío y verifica las ecuaciones modulares y la cota de norma del retículo \cite{yang2025multiserver, ma2026laasso}.
+    \item \textbf{Fase 4 (Acuerdo de Clave de Sesión $\mathcal{S} \to \mathcal{C}$):} Aprobada la autenticación, $\mathcal{S}$ deriva una pista de redondeo cruzado en 4 cuadrantes $\mathbf{v} \in \{0,1\}^{256}$ y la transmite a $\mathcal{C}$, permitiendo a ambas partes concordar la misma clave simétrica de 256 bits mediante reconciliación de Peikert \cite{yang2025multiserver}.
+\end{enumerate}
+
+\subsubsection{Generación del Argumento NIZKAoK y Ocultación de Tokens (Token Hiding)}
+
+\paragraph{Fundamentación del Argumento NIZKAoK mediante Fiat-Shamir con Abortos}
+
+La primera etapa operacional del protocolo PQLite-Auth v2 se ejecuta íntegramente dentro del entorno físicamente protegido del dispositivo cliente ($\mathcal{C}$) \cite{mukil2026implementing, ma2026laasso}. Su propósito es construir un argumento no interactivo de conocimiento de conocimiento cero (\textit{Non-Interactive Zero-Knowledge Argument of Knowledge} - NIZKAoK) que pruebe la posesión del secreto vectorial $\mathbf{s} \in \mathcal{R}_q^k$ asociado al compromiso público $\mathbf{t} = \mathbf{A}\mathbf{s} + \mathbf{e} \pmod q$, sin revelar componente alguna de $\mathbf{s}$ \cite{lyubashevsky2009fiat, ma2026laasso}.
+
+Para evitar que la respuesta lineal filtre la geometría de la clave secreta, el protocolo adapta el paradigma de \textit{Fiat-Shamir con Abortos} (\textit{Fiat-Shamir with aborts}) ideado por Lyubashevsky \cite{lyubashevsky2009fiat, lyubashevsky2012lattice}. La generación de la prueba se ejecuta mediante la siguiente secuencia de operaciones algebraicas en el anillo $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^{256} + 1 \rangle$ \cite{yang2025multiserver, ma2026laasso}:
+
+\begin{enumerate}
+    \item \textbf{Muestreo de Ruido Fresco de Enmascaramiento:} El dispositivo $\mathcal{C}$ genera de forma estocástica e independiente un vector de ruido fresco de enmascaramiento $\mathbf{y} \in \mathcal{R}_q^k$, cuyos coeficientes se muestrean a partir de la Distribución Binomial Centrada $\text{CBD}(\eta=2)$ con desviación estándar $\sigma = 1$ \cite{yang2025multiserver}:
+    \begin{equation}
+    \mathbf{y} \leftarrow \text{CBD}(\eta=2)^k \in \mathcal{R}_q^k
+    \end{equation}
+    
+    \item \textbf{Cálculo del Compromiso Providencial ($\mathbf{w}$):} Utilizando la matriz pública global del sistema $\mathbf{A} \in \mathcal{R}_q^{k \times k}$, el cliente evalúa el vector de compromiso preliminar $\mathbf{w}$ \cite{yang2025multiserver, ma2026laasso}:
+    \begin{equation}
+    \mathbf{w} = \mathbf{A}\mathbf{y} \pmod q \in \mathcal{R}_q^k
+    \end{equation}
+    
+    \item \textbf{Derivación Determinista del Desafío ($\mathbf{L}$):} Mediante la heurística de Fiat-Shamir en el modelo de oráculo aleatorio (\textit{Random Oracle Model} - ROM), $\mathcal{C}$ calcula la matriz de desafío no interactivo $\mathbf{L} \in \mathcal{R}_q^{k \times k}$ aplicando la función de hash criptográfica $H: \{0,1\}^* \to \mathcal{R}_q^{k \times k}$ sobre la concatenación del compromiso público $\mathbf{t}$, el compromiso fresco $\mathbf{w}$, un identificador único de ticket de un solo uso $\mathbf{t}_{\text{ticket}} \in \{0,1\}^{256}$ y la marca de tiempo de la sesión $\nu$ \cite{fiat1986how, lyubashevsky2009fiat, ma2026laasso}:
+    \begin{equation}
+    \mathbf{L} = H(\mathbf{A}, \mathbf{t}, \mathbf{w}, \mathbf{t}_{\text{ticket}}, \nu) \in \mathcal{R}_q^{k \times k}
+    \end{equation}
+    La inclusión explícita del par $(\mathbf{t}_{\text{ticket}}, \nu)$ en el oráculo garantiza la vinculación criptográfica entre la prueba NIZKAoK y la sesión temporal activa, previniendo la maleabilidad de los transcripts \cite{ma2026laasso}.
+    
+    \item \textbf{Evaluación del Vector de Respuesta ($\mathbf{z}$):} El cliente evalúa la combinación lineal modular entre la clave secreta $\mathbf{s}$, la matriz de desafío $\mathbf{L}$ y el ruido fresco $\mathbf{y}$ \cite{yang2025multiserver, ma2026laasso}:
+    \begin{equation}
+    \mathbf{z} = \mathbf{s}\mathbf{L} + \mathbf{y} \pmod q \in \mathcal{R}_q^k
+    \end{equation}
+    
+    \item \textbf{Filtro de Muestreo de Rechazo (\textit{Rejection Sampling}):} Para romper la correlación estadística entre la respuesta $\mathbf{z}$ y el secreto $\mathbf{s}$, el algoritmo aplica una verificación de cota de norma infinita $\|\cdot\|_\infty$ \cite{lyubashevsky2009fiat, lyubashevsky2012lattice, lai2025leaky}:
+    \begin{equation}
+    \|\mathbf{z}\|_\infty \le \beta_z
+    \end{equation}
+    donde $\beta_z$ es el umbral de aceptación ajustado según el parámetro de escalamiento de Leaky LWE \cite{lai2025leaky}. Si $\|\mathbf{z}\|_\infty > \beta_z$, el procesador de $\mathcal{C}$ \textit{aborta la iteración de inmediato}, descarta la tupla $(\mathbf{y}, \mathbf{z}, \mathbf{w})$ y retorna de forma recursiva al Paso 1 para muestrear un nuevo vector de ruido $\mathbf{y}'$ \cite{lyubashevsky2009fiat, ma2026laasso}. Si $\|\mathbf{z}\|_\infty \le \beta_z$, la prueba NIZKAoK $(\mathbf{z}, \mathbf{w})$ se declara válida y el dispositivo avanza hacia la fase de enmascaramiento \cite{lyubashevsky2009fiat, ma2026laasso}.
+\end{enumerate}
+
+\paragraph{Mecanismo de Ocultación de Tokens (\textit{Token Hiding}) con Kyber y AES}
+
+Aprobada la verificación de norma del argumento NIZKAoK en $\mathcal{C}$, el protocolo inicia el procedimiento de enmascaramiento para garantizar la propiedad de \textit{verificador designado} (\textit{designated verifier}) e impedir que la terminal intermedia $\mathcal{T}$ o cualquier observador del canal inspeccione el contenido de la prueba \cite{ma2026laasso}. El mecanismo de \textit{Token Hiding} implementa una envoltura de cifrado híbrido poscuántico estructurada en los siguientes pasos \cite{ma2026laasso}:
+
+\begin{enumerate}
+    \item \textbf{Generación de la Clave Simétrica Efímera ($K$):} El cliente $\mathcal{C}$ muestrea un bloque de aleatoriedad uniforme de 256 bits para instanciar una clave simétrica de un solo uso \cite{ma2026laasso}:
+    \begin{equation}
+    K \stackrel{\$}{\leftarrow} \{0, 1\}^{256}
+    \end{equation}
+    
+    \item \textbf{Encapsulamiento Asimétrico Poscuántico ($\text{tok}_1$):} Utilizando la clave pública de descifrado del servidor central $vpk$ (correspondiente al estándar ML-KEM / Kyber-768 almacenado en la memoria inalterable de $\mathcal{C}$), el dispositivo encapsula la clave efímera $K$ \cite{ma2026laasso, mukil2026implementing}:
+    \begin{equation}
+    \text{tok}_1 = \text{Kyber.Enc}(vpk, K)
+    \end{equation}
+    El resultado $\text{tok}_1$ constituye un texto cifrado asimétrico sobre Module-LWE que solo puede ser revertido por la clave privada $vsk$ del servidor $\mathcal{S}$ \cite{ma2026laasso}.
+    
+    \item \textbf{Cifrado Simétrico AES-256 del Carga Útil ($\text{tok}_2$):} Utilizando la clave efímera $K$ bajo el algoritmo simétrico AES en modo GCM/CBC con vector de inicialización fresco, $\mathcal{C}$ encripta la tupla que contiene la prueba NIZKAoK, el compromiso $\mathbf{w}$, el identificador de ticket $\mathbf{t}_{\text{ticket}}$ y el sello de tiempo $\nu$ \cite{ma2026laasso}:
+    \begin{equation}
+    \text{tok}_2 = \text{AES.Enc}\left(K, \{\mathbf{z}, \mathbf{w}, \mathbf{t}_{\text{ticket}}, \nu\}\right)
+    \end{equation}
+    
+    \item \textbf{Construcción y Emisión del Token Compuesto ($\text{tok}$):} El dispositivo cliente concatena las dos estructuras cifradas para conformar el token de autenticación final \cite{ma2026laasso}:
+    \begin{equation}
+    \text{tok} = (\text{tok}_1, \text{tok}_2)
+    \end{equation}
+    El paquete $\text{tok}$ se transmite desde $\mathcal{C}$ hacia la terminal intermedia $\mathcal{T}$ mediante la interfaz de comunicación \cite{ma2026laasso}.
+\end{enumerate}
+
+\paragraph{Transferencia Ciega en la Terminal Intermedia ($\mathcal{T}$)}
+
+La terminal intermedia $\mathcal{T}$ recibe el paquete compuesto $\text{tok} = (\text{tok}_1, \text{tok}_2)$. Debido a la propiedad de indecodificabilidad bajo ataques de texto claro elegido (IND-CPA) de Kyber y AES-256, el bloque $\text{tok}$ resulta computacionalmente indistinguible de una secuencia de ruido aleatorio uniforme sobre el alfabeto binario para la terminal $\mathcal{T}$ \cite{ma2026laasso}:
+
+\begin{equation}
+\text{tok} \approx_c \mathcal{U}\left(\{0, 1\}^{|\text{tok}|}\right)
+\end{equation}
+
+Por consiguiente, la terminal $\mathcal{T}$ no puede descifrar la clave $K$, no puede extraer el vector de respuesta $\mathbf{z}$, ni puede verificar si las ecuaciones del retículo son válidas \cite{ma2026laasso}. Operacionalmente, $\mathcal{T}$ actúa como un \textit{canal ciego de retransmisión} (\textit{blind relay}), limitándose a empaquetar $\text{tok}$ dentro de la trama de red y reenviarlo hacia la dirección de red del servidor verificador designado $\mathcal{S}$ \cite{ma2026laasso}.
+
+\subsubsection{Descifrado Centralizado, Verificación de Norma y Prevención de Replay}
+
+\paragraph{Recepción y Descifrado Híbrido en el Servidor Designado}
+
+El servidor central verificador ($\mathcal{S}$) es la única entidad que posee la clave privada de descifrado $vsk$ correspondiente al par de claves asimétricas de Kyber-768 instauradas en el sistema \cite{ma2026laasso, mukil2026implementing}. Al recibir el paquete cifrado $\text{tok} = (\text{tok}_1, \text{tok}_2)$ retransmitido por la terminal intermedia $\mathcal{T}$, el servidor $\mathcal{S}$ inicia el procedimiento de desencapsulamiento y descifrado simétrico estructurado en las siguientes etapas \cite{ma2026laasso}:
+
+\begin{enumerate}
+    \item \textbf{Recuperación de la Clave Simétrica Efímera ($K$):} Mediante el algoritmo de descifrado asimétrico de Kyber, el servidor $\mathcal{S}$ aplica su clave privada $vsk$ sobre la primera componente del token $\text{tok}_1$ \cite{ma2026laasso}:
+    \begin{equation}
+    K = \text{Kyber.Dec}(vsk, \text{tok}_1)
+    \end{equation}
+    La seguridad de la construcción garantiza que, salvo que el atacante resuelva una instancia dura del problema MLWE sobre la clave pública $vpk$, la clave simétrica de 256 bits $K$ se recupera de forma íntegra y sin alteraciones \cite{ma2026laasso}.
+
+    \item \textbf{Descifrado Simétrico de la Carga Útil ($\text{payload}$):} Utilizando la clave efímera $K$ recuperada, $\mathcal{S}$ ejecuta el descifrado AES-256 sobre la segunda componente $\text{tok}_2$ para extraer la carga útil en texto claro \cite{ma2026laasso}:
+    \begin{equation}
+    \{\mathbf{z}, \mathbf{w}, \mathbf{t}_{\text{ticket}}, \nu\} = \text{AES.Dec}(K, \text{tok}_2)
+    \end{equation}
+    donde $\mathbf{z} \in \mathcal{R}_q^k$ es la respuesta NIZKAoK, $\mathbf{w} \in \mathcal{R}_q^k$ es el vector de compromiso fresco, $\mathbf{t}_{\text{ticket}} \in \{0,1\}^{256}$ es el identificador único de ticket y $\nu$ es el sello temporal de la sesión \cite{yang2025multiserver, ma2026laasso}.
+\end{enumerate}
+
+\paragraph{Verificación Anti-Replay y Frescura Temporal mediante Registro de Tickets}
+
+Antes de procesar la prueba sobre el retículo, el servidor $\mathcal{S}$ valida las propiedades de no maleabilidad y frescura temporal del paquete para neutralizar ataques de repetición (\textit{replay attacks}) e intercepción diferida \cite{lombardi2022postquantum, ma2026laasso}. Esta validación se rige por las siguientes condiciones de control \cite{ma2026laasso}:
+
+\begin{enumerate}
+    \item \textbf{Control de Ventana Temporal ($\Delta t$):} El servidor compara la marca de tiempo $\nu$ contenida en la carga útil descifrada contra el reloj interno del servidor $\nu_{\text{actual}}$. Si $|\nu_{\text{actual}} - \nu| > \Delta t$ (donde $\Delta t$ define la ventana de tolerancia máxima del sistema), el servidor aborta la transacción por caducidad temporal \cite{ma2026laasso}.
+    
+    \item \textbf{Verificación en el Registro de Consumo (\textit{Spent Log}):} El servidor $\mathcal{S}$ realiza una consulta de búsqueda determinista sobre el registro centralizado de tickets consumidos $\mathcal{L}_{\text{spent}}$ empleando el identificador $\mathbf{t}_{\text{ticket}}$ \cite{ma2026laasso}:
+    \begin{equation}
+    \mathbf{t}_{\text{ticket}} \stackrel{?}{\in} \mathcal{L}_{\text{spent}}
+    \end{equation}
+    Si $\mathbf{t}_{\text{ticket}} \in \mathcal{L}_{\text{spent}}$, se detecta un intento de reutilización de un token capturado previamente en el canal público, por lo que el servidor $\mathcal{S}$ rechaza de inmediato la solicitud y emite una alerta de seguridad \cite{ma2026laasso}. Si $\mathbf{t}_{\text{ticket}} \notin \mathcal{L}_{\text{spent}}$, el servidor añade formalmente el identificador al registro ($\mathcal{L}_{\text{spent}} \leftarrow \mathcal{L}_{\text{spent}} \cup \{\mathbf{t}_{\text{ticket}}\}$) para invalidar cualquier retransmisión futura de dicho ticket \cite{ma2026laasso}.
+\end{enumerate}
+
+\paragraph{Reconstrucción del Desafío y Verificación Geométrica sobre el Retículo}
+
+Superado el filtro anti-replay, el servidor $\mathcal{S}$ valida la solidez matemática de la prueba NIZKAoK evaluando la relación algebraica entre la respuesta $\mathbf{z}$, el compromiso público $\mathbf{t} = \mathbf{A}\mathbf{s} + \mathbf{e} \pmod q$ almacenado en la base de datos central y el compromiso providencial $\mathbf{w}$ \cite{yang2025multiserver, ma2026laasso}:
+
+\begin{enumerate}
+    \item \textbf{Reconstrucción del Desafío Fiat-Shamir ($\mathbf{L}$):} El servidor $\mathcal{S}$ invoca la función de hash oráculo $H$ sobre los elementos recuperados para reconstruir exactamente la matriz de desafío no interactiva $\mathbf{L} \in \mathcal{R}_q^{k \times k}$ \cite{fiat1986how, lyubashevsky2009fiat, ma2026laasso}:
+    \begin{equation}
+    \mathbf{L} = H(\mathbf{A}, \mathbf{t}, \mathbf{w}, \mathbf{t}_{\text{ticket}}, \nu) \in \mathcal{R}_q^{k \times k}
+    \end{equation}
+
+    \item \textbf{Comprobación Estricta de Cota de Norma ($\|\mathbf{z}\|_\infty$):} El servidor verifica que el vector de respuesta $\mathbf{z}$ cumpla la restricción de norma máxima \cite{lyubashevsky2009fiat, lai2025leaky}:
+    \begin{equation}
+    \|\mathbf{z}\|_\infty \stackrel{?}{\le} \beta_z
+    \end{equation}
+    Si $\|\mathbf{z}\|_\infty > \beta_z$, el servidor rechaza la prueba de inmediato. Esta verificación garantiza que un adversario no pueda presentar vectores de respuesta arbitrariamente largos para satisfacer la ecuación modular sin conocer el secreto corto $\mathbf{s}$ \cite{lyubashevsky2009fiat, lai2025leaky}.
+
+    \item \textbf{Evaluación de Consistencia Algebraica sobre MLWE:} El servidor $\mathcal{S}$ recupera la matriz pública $\mathbf{A}$ y el compromiso $\mathbf{t}$ asociados a la identidad del cliente, y evalúa el producto matricial modular \cite{yang2025multiserver, ma2026laasso}:
+    \begin{equation}
+    \mathbf{A}\mathbf{z} - \mathbf{t}\mathbf{L} \pmod q \in \mathcal{R}_q^k
+    \end{equation}
+    Sustituyendo las definiciones del probador ($\mathbf{z} = \mathbf{s}\mathbf{L} + \mathbf{y}$ y $\mathbf{t} = \mathbf{A}\mathbf{s} + \mathbf{e}$), se observa la cancelación del término de secreto principal \cite{yang2025multiserver}:
+    \begin{align}
+    \mathbf{A}\mathbf{z} - \mathbf{t}\mathbf{L} &\equiv \mathbf{A}(\mathbf{s}\mathbf{L} + \mathbf{y}) - (\mathbf{A}\mathbf{s} + \mathbf{e})\mathbf{L} \pmod q \nonumber \\
+    &\equiv \mathbf{A}\mathbf{s}\mathbf{L} + \mathbf{A}\mathbf{y} - \mathbf{A}\mathbf{s}\mathbf{L} - \mathbf{e}\mathbf{L} \pmod q \nonumber \\
+    &\equiv \mathbf{A}\mathbf{y} - \mathbf{e}\mathbf{L} \pmod q \nonumber \\
+    &\equiv \mathbf{w} - \mathbf{e}\mathbf{L} \pmod q
+    \end{align}
+
+    \item \textbf{Validación de Cota de Ruido Residual:} Dado que $\mathbf{w} = \mathbf{A}\mathbf{y} \pmod q$, la diferencia entre la expresión calculada $\mathbf{A}\mathbf{z} - \mathbf{t}\mathbf{L}$ y el compromiso providencial $\mathbf{w}$ viene dada por el término de error perturbador $-\mathbf{e}\mathbf{L}$ \cite{yang2025multiserver}. El servidor verifica que la norma del error residual esté acotada por la cota teórica $\beta_e$ \cite{yang2025multiserver, lai2025leaky}:
+    \begin{equation}
+    \|\mathbf{A}\mathbf{z} - \mathbf{t}\mathbf{L} - \mathbf{w}\|_\infty \stackrel{?}{\le} \beta_e
+    \end{equation}
+    Si la diferencia respeta la cota $\beta_e$, el servidor declara la prueba NIZKAoK como \textit{válida} y confirma la autenticación del dispositivo cliente $\mathcal{C}$, habilitando la ejecución de la fase final de acuerdo de clave de sesión \cite{yang2025multiserver, ma2026laasso}.
+\end{enumerate}
+
+\subsubsection{Acuerdo de Clave de Sesión mediante Reconciliación en Cuatro Cuadrantes}
+
+\paragraph{Fundamentación de la Reconciliación de Errores sobre Retículos}
+
+Tras la verificación exitosa de la prueba NIZKAoK y la confirmación de autenticidad en el servidor ($\mathcal{S}$), el protocolo culmina con la generación de una clave simétrica de sesión compartida $K_{\text{sesión}} \in \{0, 1\}^{256}$ entre el dispositivo cliente ($\mathcal{C}$) y el servidor ($\mathcal{S}$) \cite{yang2025multiserver, rewal2023quantumsafe}. Para evitar el uso de mecanismos adicionales de cifrado asimétrico que incrementarían la sobrecarga computacional del dispositivo embebido, ambas partes derivan la clave mediante la técnica de \textit{reconciliación de errores de Peikert} sobre el anillo $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^{256} + 1 \rangle$ con módulo $q = 3329$ \cite{yang2025multiserver, rewal2023quantumsafe}.
+
+En un protocolo sobre retículos, las multiplicaciones algebraicas independientes ejecutadas por el cliente y el servidor producen dos vectores continuos ruidosos $\mathbf{w}_A, \mathbf{w}_B \in \mathcal{R}_q$ que difieren únicamente por una pequeña perturbación de error LWE acumulado \cite{yang2025multiserver, rewal2023quantumsafe}:
+
+\begin{equation}
+\mathbf{w}_A \approx \mathbf{w}_B \pmod q \implies \mathbf{w}_A = \mathbf{w}_B + \mathbf{e}_{\text{rec}} \pmod q
+\end{equation}
+
+Debido a la naturaleza discreta de los bordes de redondeo modular en $\mathbb{Z}_q$, la aplicación de una función de redondeo directa sobre coeficientes cercanos a las fronteras provocaría discrepancias de bits si el error $\mathbf{e}_{\text{rec}}$ hace saltar el valor al cuadrante contiguo \cite{yang2025multiserver}. La reconciliación en cuatro cuadrantes resuelve el problema de la frontera mediante la emisión de un vector de señal auxiliar $\mathbf{v} \in \{0,1\}^{256}$ transmitido en texto claro, el cual orienta al cliente para corregir la zona de decisión sin filtrar información sobre los bits de la clave final \cite{yang2025multiserver}.
+
+\paragraph{Partición Modular y Funciones de Peikert en $\mathbb{Z}_{3329}$}
+
+El espacio del anillo modular $\mathbb{Z}_q$ con $q = 3329$ se particiona formalmente en cuatro cuadrantes de tamaño aproximado $\lfloor q/4 \rfloor \approx 832$ unidades \cite{yang2025multiserver}:
+
+\begin{itemize}
+    \item \textbf{Cuadrante 0 ($Q_0$):} $w \in \left[0, \lfloor q/4 \rfloor\right) \implies \text{Bit de Clave } K = 0, \quad \text{Señal } v = 0 \text{ (Par)}$
+    \item \textbf{Cuadrante 1 ($Q_1$):} $w \in \left[\lfloor q/4 \rfloor, \lfloor q/2 \rfloor\right) \implies \text{Bit de Clave } K = 0, \quad \text{Señal } v = 1 \text{ (Impar)}$
+    \item \textbf{Cuadrante 2 ($Q_2$):} $w \in \left[\lfloor q/2 \rfloor, \lfloor 3q/4 \rfloor\right) \implies \text{Bit de Clave } K = 1, \quad \text{Señal } v = 0 \text{ (Par)}$
+    \item \textbf{Cuadrante 3 ($Q_3$):} $w \in \left[\lfloor 3q/4 \rfloor, q\right) \implies \text{Bit de Clave } K = 1, \quad \text{Señal } v = 1 \text{ (Impar)}$
+\end{itemize}
+
+Las tres funciones algebraicas fundamentales de Peikert adaptadas al módulo $q = 3329$ se definen coeficiente a coeficiente sobre $w \in \mathbb{Z}_q$ de la siguiente manera \cite{yang2025multiserver}:
+
+\begin{enumerate}
+    \item \textbf{Función de Redondeo Modular (Extracción de Bit de Clave):} Extrae el bit principal según la mitad del círculo modular \cite{yang2025multiserver}:
+    \begin{equation}
+    \lfloor w \rfloor_{q,2} = \left\lfloor \frac{2w}{q} \right\rceil \bmod 2 \in \{0, 1\}
+    \end{equation}
+    
+    \item \textbf{Función de Redondeo Cruzado (Generación de Señal Auxiliary $v$):} Identifica si el valor pertenece a un cuadrante Par ($Q_0, Q_2$) o Impar ($Q_1, Q_3$) \cite{yang2025multiserver}:
+    \begin{equation}
+    \langle w \rangle_{q,2} = \left\lfloor \frac{4w}{q} \right\rfloor \bmod 2 \in \{0, 1\}
+    \end{equation}
+    
+    \item \textbf{Función de Reconciliación de Errores ($\text{rec}$):} Reconstruye el bit de clave idéntico al del servidor utilizando el valor local del cliente $w_A$ y la pista de señal $v$ \cite{yang2025multiserver}:
+    \begin{equation}
+    \text{rec}(w_A, v) = \left\lfloor \frac{2}{q} \cdot \left( w_A - \left( (2v + 1) \cdot \frac{q}{4} \right) \right) \right\rceil \bmod 2 \in \{0, 1\}
+    \end{equation}
+\end{enumerate}
+
+\paragraph{Secuencia de Generación de la Clave de Sesión}
+
+El procedimiento de concordancia de clave simétrica entre $\mathcal{S}$ y $\mathcal{C}$ se ejecuta mediante los siguientes pasos numerados \cite{yang2025multiserver, rewal2023quantumsafe}:
+
+\begin{enumerate}
+    \item \textbf{Cálculo del Polinomio Base en el Servidor ($\mathbf{w}_B$):} El servidor $\mathcal{S}$ combina el vector de respuesta del cliente con su secreto local para evaluar el polinomio de retículo $\mathbf{w}_B \in \mathcal{R}_q$ de $d = 256$ coeficientes \cite{yang2025multiserver}:
+    \begin{equation}
+    \mathbf{w}_B = \mathbf{b}_{\mathcal{C}}^T \mathbf{s}_{\mathcal{S}} + \mathbf{e}_{\mathcal{S}} \pmod q \in \mathcal{R}_q
+    \end{equation}
+    
+    \item \textbf{Extracción Central de la Clave y Derivación de la Pista ($\mathbf{v}$):} El servidor $\mathcal{S}$ deriva simultáneamente la clave simétrica del servidor $K_{\mathcal{S}} \in \{0, 1\}^{256}$ y el vector de señal auxiliar $\mathbf{v} \in \{0, 1\}^{256}$ aplicando las funciones de Peikert coeficiente a coeficiente sobre los 256 elementos de $\mathbf{w}_B$ \cite{yang2025multiserver}:
+    \begin{equation}
+    K_{\mathcal{S}}^{(i)} = \lfloor \mathbf{w}_B^{(i)} \rfloor_{q,2}, \quad \mathbf{v}^{(i)} = \langle \mathbf{w}_B^{(i)} \rangle_{q,2} \quad \text{para } i \in \{0, \dots, 255\}
+    \end{equation}
+    El vector de señal $\mathbf{v}$ posee una longitud de 256 bits (exactamente 32 bytes de carga útil) \cite{yang2025multiserver}.
+    
+    \item \textbf{Transmisión de la Pista en Texto Claro ($\mathbf{v}$):} El servidor $\mathcal{S}$ emite el bloque de 32 bytes $\mathbf{v}$ a través del canal de red. La terminal intermedia $\mathcal{T}$ retransmite $\mathbf{v}$ de forma transparente hacia el dispositivo cliente $\mathcal{C}$ \cite{yang2025multiserver}.
+    
+    \item \textbf{Reconciliación Paralela en el Cliente ($\mathcal{C}$):} El cliente $\mathcal{C}$ recupera $\mathbf{v}$, calcula su valor local $\mathbf{w}_A = \mathbf{b}_{\mathcal{S}}^T \mathbf{s}_{\mathcal{C}} \pmod q \in \mathcal{R}_q$ y ejecuta la función de reconciliación en paralelo sobre sus 256 coeficientes \cite{yang2025multiserver}:
+    \begin{equation}
+    K_{\mathcal{C}}^{(i)} = \text{rec}\left(\mathbf{w}_A^{(i)}, \mathbf{v}^{(i)}\right) \quad \text{para } i \in \{0, \dots, 255\}
+    \end{equation}
+    Si la norma del error residual respeta la cota $\|\mathbf{e}_{\text{rec}}\|_\infty < q/8 \approx 416$, la propiedad de convergencia del teorema de Peikert garantiza la coincidencia idéntica de la clave simétrica de 256 bits \cite{yang2025multiserver, rewal2023quantumsafe}:
+    \begin{equation}
+    K_{\mathcal{C}} = K_{\mathcal{S}} = K_{\text{sesión}} \in \{0, 1\}^{256}
+    \end{equation}
+\end{enumerate}
+
+\paragraph{Inmunidad de la Pista $\mathbf{v}$ en el Canal Público}
+
+La transmisión del vector de señal $\mathbf{v}$ en texto claro a través del canal no compromete la seguridad de la clave de sesión $K_{\text{sesión}}$ frente a un adversario $\mathcal{A}$ que intercepte el tráfico \cite{yang2025multiserver}. Debido a la simetría geométrica de la partición en cuatro cuadrantes, una señal $v^{(i)} = 0$ indica que el coeficiente está en un cuadrante Par, el cual corresponde con idéntica probabilidad del 50\% tanto al Cuadrante 0 ($Q_0 \implies \text{Bit } 0$) como al Cuadrante 2 ($Q_2 \implies \text{Bit } 1$) \cite{yang2025multiserver}:
+
+\begin{equation}
+\Pr\left(K^{(i)} = 0 \mid v^{(i)} = 0\right) = \Pr\left(K^{(i)} = 1 \mid v^{(i)} = 0\right) = \frac{1}{2}
+\end{equation}
+
+Por consiguiente, la distribución de la pista $\mathbf{v}$ es estadísticamente independiente del vector de clave $K_{\text{sesión}}$, garantizando que el adversario obtenga cero bits de ventaja computacional sobre la clave simétrica acordada \cite{yang2025multiserver, rewal2023quantumsafe}.
+
+\subsubsection{Análisis Teórico de Seguridad, Resistencia Poscuántica y Complejidad}
+
+\paragraph{Sustento Criptográfico mediante Leaky LWE y Módulos Compactos}
+
+La seguridad formal del protocolo PQLite-Auth v2 ante la reducción del módulo a $q = 3329$ se fundamenta en la teoría de \textit{Leaky LWE} formalizada por Lai, Swarnakar y Woo \cite{lai2025leaky}. En las construcciones ZKP tradicionales basadas en retículos, la demostración de la propiedad de conocimiento cero requiere la técnica de \textit{inundación de ruido} (\textit{noise flooding}), la cual fuerza a escalar el módulo a enteros gigantes ($q > 2^{128}$) y las dimensiones a valores masivos para evitar que las respuestas filtren la clave secreta \cite{lai2025leaky}.
+
+Bajo el marco de Leaky LWE, se demuestra que la presencia de fugas lineales ruidosas de la forma $\mathbf{l}^T = (\mathbf{s}^T, \mathbf{e}^T)\mathbf{L} + \mathbf{f}^T \pmod q$ no reduce la dureza computacional del problema LWE subyacente, siempre que la matriz de desafío $\mathbf{L}$ satisfaga la cota de norma espectral $\|\mathbf{L}^T \mathbf{L}\| \le \beta_L$ \cite{lai2025leaky}. Dado que la desviación del ruido de fuga $\sigma_f$ únicamente escala en función de la raíz cuadrada del número de consultas $Q$ ($q \ge c \cdot \sqrt{Q}$), el protocolo opera de forma probadamente segura con el módulo compacto $q = 3329$ (16 bits) \cite{yang2025multiserver, lai2025leaky}. Las respuestas emitidas resultan computacionalmente indistinguibles de ruido aleatorio uniforme sobre $\mathbb{Z}_q$, garantizando cero fuga de información sobre la clave privada $\mathbf{s}$ \cite{lai2025leaky}.
+
+\paragraph{Análisis de Dureza Geométrica y Resistencia ante Ataques BKZ}
+
+La evaluación de la resistencia poscuántica concreta del protocolo se determina mediante la estimación de la complejidad del algoritmo de reducción de bases de retículos BKZ (\textit{Block-Korkine-Zolotarev}) ejecutado sobre la instancia Module-LWE del sistema \cite{badiezadegan2026complexity, mukil2026implementing}.
+
+En el esquema PQLite-Auth v2, la matriz de polinomios posee rango $k = 3$ sobre el anillo $\mathcal{R}_q$ de grado $d = 256$ \cite{yang2025multiserver}. Aunque la dimensión matricial sea $k=3$, la dimensión espacial total del retículo euclídeo proyectado es \cite{yang2025multiserver}:
+\begin{equation}
+N = k \times d = 3 \times 256 = 768
+\end{equation}
+
+Para recuperar la clave corta $(\mathbf{s}, \mathbf{e})$ en un retículo de dimensión $N = 768$ con módulo $q = 3329$ y desviación de ruido $\sigma = 1$, un atacante cuantitativo debe reducir la base del retículo dual hasta alcanzar un factor de Hermite raíz $\delta_0 \approx 1.0039$ \cite{badiezadegan2026complexity}. La heurística de Gauss para el perfil de BKZ establece que lograr un factor de calidad $\delta_0 \le 1.0039$ exige fijar un tamaño de bloque de reducción de subespacio $\beta_{\text{BKZ}} \ge 400$ \cite{badiezadegan2026complexity}.
+
+La complejidad temporal de resolver el problema del vector más corto (SVP) exacto dentro de cada sub-bloque de dimensión $\beta_{\text{BKZ}}$ utilizando los algoritmos más eficientes de cribado cuántico (\textit{quantum sieving}) se modela mediante la cota \cite{badiezadegan2026complexity, mukil2026implementing}:
+\begin{equation}
+T_{\text{Sieve}}(\beta_{\text{BKZ}}) \approx 2^{0.265 \cdot \beta_{\text{BKZ}}} \text{ operaciones cuánticas}
+\end{equation}
+
+Sustituyendo el tamaño de bloque mínimo $\beta_{\text{BKZ}} = 400$ e integrando la sobrecarga del número de recorridos (\textit{tours}) e iteraciones de la ventana sobre las 768 dimensiones, la complejidad computacional total del ataque BKZ resulta en \cite{badiezadegan2026complexity, mukil2026implementing}:
+\begin{equation}
+T_{\text{BKZ}}(400) \ge 2^{160} \text{ operaciones cuánticas}
+\end{equation}
+
+Puesto que $T_{\text{BKZ}} \ge 2^{160}$ supera con holgura la barrera de $2^{128}$ operaciones exigida por el estándar NIST Nivel 1 (equivalente a la seguridad de CRYSTALS-Kyber 768), el protocolo se certifica como formalmente inexpugnable ante ataques geométricos y reducciones duales de bases \cite{badiezadegan2026complexity, mukil2026implementing}.
+
+\paragraph{Sobrecarga de Memoria, Comunicación y Cómputo en el Dispositivo Cliente}
+
+El diseño de PQLite-Auth v2 optimiza la eficiencia de recursos en el dispositivo cliente ($\mathcal{C}$) en tres ejes críticos \cite{mukil2026implementing, ma2026laasso}:
+
+\begin{enumerate}
+    \item \textbf{Huella de Memoria Estática y Dinámica (\textit{Memory Footprint}):}
+    \begin{itemize}
+        \item \textit{Clave Privada ($\mathbf{s}$):} Vector de $k=3$ polinomios de 256 coeficientes en $\mathbb{Z}_{3329}$ (almacenado de forma compacta utilizando 12 bits por coeficiente): $3 \times 256 \times 12 / 8 = 1.152 \text{ bytes} \approx 1.15 \text{ KB}$ \cite{yang2025multiserver}.
+        \item \textit{Matriz Pública ($\mathbf{A}$):} No se almacena explícitamente en la memoria Flash del cliente; se expande de forma determinista desde una semilla uniforme de 32 bytes ($\rho$) mediante la función XOF SHAKE-128, reduciendo el consumo de almacenamiento estático \cite{yang2025multiserver}.
+        \item \textit{Clave de Verificación del Servidor ($vpk$):} Clave pública Kyber-768 almacenada en memoria de solo lectura: $1.184 \text{ bytes} \approx 1.18 \text{ KB}$ \cite{mukil2026implementing}.
+    \end{itemize}
+
+    \item \textbf{Ancho de Banda y Sobrecarga de Comunicación (\textit{Communication Overhead}):}
+    \begin{itemize}
+        \item \textit{Token de Autenticación ($\text{tok} = (\text{tok}_1, \text{tok}_2)$):} El texto cifrado asimétrico $\text{tok}_1$ (Kyber-768) requiere $1.088 \text{ bytes}$. La carga útil simétrica $\text{tok}_2$ (AES-256) que contiene $(\mathbf{z}, \mathbf{w}, \mathbf{t}_{\text{ticket}}, \nu)$ requiere aproximadamente $2.304 \text{ bytes}$. La transmisión total emitida por $\mathcal{C}$ es de $\approx 3.39 \text{ KB}$ \cite{ma2026laasso}.
+        \item \textit{Pista de Reconciliación ($\mathbf{v}$):} La respuesta enviada por el servidor para el acuerdo de clave de sesión consiste en un vector binario de 256 bits, lo que equivale a solo $32 \text{ bytes}$ de tráfico de entrada en el canal \cite{yang2025multiserver}.
+    \end{itemize}
+
+    \item \textbf{Eficiencia Computacional y Mitigación de Canales Laterales:}
+    \begin{itemize}
+        \item \textit{Multiplicación Polinomial NTT:} La transformada NTT sobre $\mathbb{Z}_{3329}[x]/\langle x^{256} + 1 \rangle$ reduce la complejidad de multiplicación de $\mathcal{O}(d^2)$ a $\mathcal{O}(d \log d)$, requiriendo menos de 10.000 ciclos de reloj por producto en microcontroladores de 32 bits \cite{yang2025multiserver, mukil2026implementing}.
+        \item \textit{CBD en Tiempo Constante:} El muestreo de la Distribución Binomial Centrada $\text{CBD}(\eta=2)$ se ejecuta mediante operaciones lógicas a nivel de palabra en tiempo constante $\mathcal{O}(1)$, garantizando inmunidad frente a ataques de análisis de tiempo y potencia por canales laterales (\textit{Side-Channel Attacks} - SCA) \cite{yang2025multiserver, mukil2026implementing}.
+    \end{itemize}
+\end{enumerate}

@@ -1,0 +1,321 @@
+\subsection{Zero-Knowledge Proofs (ZKP)}
+
+Los protocolos de prueba de conocimiento cero (\textit{Zero-Knowledge Proofs} o ZKPs) son una técnica criptográfica que permite verificar la veracidad de una información sin necesidad de revelar los datos en sí \cite{mulder2023trends}, en el caso particular de esta tesis para verificar a un usuario ante una entidad bancaria. En este proceso interactúan dos partes: un \textbf{probador} (\textit{prover}), que genera y demuestra la validez de una afirmación, y un \textbf{verificador} (\textit{verifier}), quien comprueba dicha afirmación sin obtener información adicional ni conocer los datos subyacentes.
+
+Las ZKP pueden clasificarse principalmente en dos categorías \cite{mulder2023trends}:
+\begin{itemize}
+    \item \textbf{Interactivas:} donde el verificador envía múltiples retos aleatorios al probador hasta alcanzar un alto grado de certeza.
+    \item \textbf{No interactivas:} donde la validación se realiza en una sola interacción (\textit{single shot}).
+\end{itemize}
+
+La diferencia fundamental radica en que las pruebas no interactivas sustituyen los retos aleatorios del verificador por un \textbf{valor de referencia común} (\textit{common reference value}), lo que permite que la prueba generada sea transferible y validada de forma independiente por terceros \cite{mulder2023trends}.
+
+La utilidad principal de este paradigma consiste en que en un protocolo convencional de autenticación se tiene el verificador y el usuario, el verificador no confía en el usuario antes de que este se identifique y el usuario se asume que tiene confianza de que la entidad verificadora no va a filtrar su información personal y por ende puede entregarla para llevar a cabo la autenticación. En cambio, usando ZKP se elimina la posibilidad de filtración y la necesidad de confianza en la entidad.
+
+\subsubsection{Fundamentos Matemáticos y Propiedades de las Pruebas de Conocimiento Cero}
+
+\paragraph{Formulación Formal de Relaciones NP y Sistemas de Prueba Interactivos}
+En la teoría de la complejidad computacional y la criptografía moderna, un sistema de prueba de conocimiento cero se formaliza mediante el concepto de lenguaje en NP definido sobre una relación binaria evaluable en tiempo polinomial \cite{goldwasser1989knowledge}. Sea $R \subseteq \{0,1\}^* \times \{0,1\}^*$ una relación NP. Se define el lenguaje asociado $L_R$ como el conjunto de instancias o afirmaciones para las cuales existe un testigo (\textit{witness}) que satisface la relación:
+\begin{equation}
+L_R = \{ x \in \{0,1\}^* \mid \exists \, w \in \{0,1\}^* \text{ tal que } (x, w) \in R \}
+\end{equation}
+Donde $x$ representa la declaración pública (por ejemplo, una clave pública o el valor de un hash) y $w$ representa el testigo privado o secreto (por ejemplo, una clave privada o una preimagen).
+
+Un sistema de prueba interactivo para el lenguaje $L_R$ consta de un par de máquinas de Turing probabilísticas que interactúan mediante el intercambio de mensajes en tiempo polinomial (PPT): el \textbf{Proponente} ($\mathcal{P}$) y el \textbf{Verificador} ($\mathcal{V}$). El proponente $\mathcal{P}$ posee la instancia pública $x$ y el testigo secreto $w$, mientras que el verificador $\mathcal{V}$ solo conoce $x$. Al finalizar el protocolo de interacción, denotado por el flujo de transcripción $\langle \mathcal{P}(x, w), \mathcal{V}(x) \rangle$, el verificador emite una decisión binaria:
+\begin{equation}
+\langle \mathcal{P}(x, w), \mathcal{V}(x) \rangle \in \{1 \text{ (Aceptar)}, 0 \text{ (Rechazar)}\}
+\end{equation}
+
+\paragraph{Definición Matemática Rigurosa de las Propiedades Fundamentales}
+Para que la interacción $(\mathcal{P}, \mathcal{V})$ constituya un sistema de prueba de conocimiento cero (\textit{Zero-Knowledge Proof} - ZKP), debe satisfacer de forma estricta tres propiedades fundamentales cuantificadas bajo un parámetro de seguridad $\lambda \in \mathbb{N}$ \cite{goldwasser1989knowledge, badiezadegan2026complexity}:
+
+\begin{enumerate}
+    \item \textbf{Completitud (\textit{Completeness}):} Garantiza que si la afirmación es verdadera y ambas partes siguen el protocolo honestamente, el verificador siempre aceptará la prueba. Formalmente, para todo par $(x, w) \in R$:
+    \begin{equation}
+    \Pr\left[ \langle \mathcal{P}(x, w), \mathcal{V}(x) \rangle = 1 \right] \ge 1 - \text{negl}(\lambda)
+    \end{equation}
+    Donde $\text{negl}(\lambda)$ denota una función infinitesimal (\textit{negligible}), tal que para todo polinomio $p(\cdot)$ existe un $\lambda_0$ donde $\text{negl}(\lambda) < 1/p(\lambda)$ para todo $\lambda > \lambda_0$. Si la probabilidad es exactamente igual a $1$, el esquema posee \textit{completitud perfecta}.
+
+    \item \textbf{Solidez (\textit{Soundness}):} Garantiza que si la afirmación es falsa ($x \notin L_R$), ningún proponente deshonesto $\mathcal{P}^*$ (incluso con recursos computacionales ilimitados) puede convencer al verificador con una probabilidad significativa. Formalmente, para todo $x \notin L_R$ y cualquier proponente deshonesto $\mathcal{P}^*$:
+    \begin{equation}
+    \Pr\left[ \langle \mathcal{P}^*(x), \mathcal{V}(x) \rangle = 1 \right] \le \epsilon(\lambda) \le \text{negl}(\lambda)
+    \end{equation}
+    La cantidad $\epsilon(\lambda)$ se denomina el \textit{error de solidez} (\textit{soundness error}). En sistemas donde la solidez se garantiza únicamente contra proponentes acotados a tiempo polinomial (PPT), el sistema se denomina un \textit{argumento de conocimiento} (\textit{Argument of Knowledge}).
+
+    \item \textbf{Conocimiento Cero (\textit{Zero-Knowledge}):} Garantiza que el verificador no aprende ninguna información adicional sobre el testigo $w$ más allá de la veracidad de la afirmación $x \in L_R$. Se formaliza mediante la existencia de un \textbf{Simulador} probabilístico en tiempo polinomial ($\mathcal{S}$) que, teniendo acceso únicamente a la instancia pública $x$ (y a la máquina del verificador, pero sin acceso a $w$), es capaz de generar una transcripción sintética que resulta indistinguible de la interacción real.
+    
+    Para cualquier verificador PPT deshonesto $\mathcal{V}^*$ y para todo $(x, w) \in R$, la vista del verificador $\text{View}_{\mathcal{V}^*}\left[ \langle \mathcal{P}(x, w), \mathcal{V}^*(x) \rangle \right]$ satisface:
+    \begin{equation}
+    \mathcal{S}^{\mathcal{V}^*}(x) \approx \text{View}_{\mathcal{V}^*}\left[ \langle \mathcal{P}(x, w), \mathcal{V}^*(x) \rangle \right]
+    \end{equation}
+    Según la noción de indistinguibilidad ($\approx$), el esquema se clasifica en:
+    \begin{itemize}
+        \item \textbf{Conocimiento Cero Perfecto ($\approx_p$):} Las distribuciones de probabilidad son matemáticamente idénticas.
+        \item \textbf{Conocimiento Cero Estadístico ($\approx_s$):} La distancia estadística entre ambas distribuciones es infinitesimal.
+        \item \textbf{Conocimiento Cero Computacional ($\approx_c$):} Ningún algoritmo PPT puede distinguir entre ambas distribuciones con una ventaja no despreciable.
+    \end{itemize}
+\end{enumerate}
+
+\paragraph{Clasificación de Esquemas: Protocolos Sigma vs. Argumentos No Interactivos (NIZKAoK)}
+Los sistemas de prueba de conocimiento cero se dividen estructuralmente según el modelo de interacción entre las partes:
+
+\begin{itemize}
+    \item \textbf{Protocolos Interactivos de Tres Movimientos ($\Sigma$-Protocolos):} Son la piedra angular de las construcciones algebraicas. Un protocolo $\Sigma$ opera en tres rondas consecutivas:
+    \begin{enumerate}
+        \item \textit{Compromiso (\textit{Commitment} $a$):} $\mathcal{P}$ genera un valor aleatorio interno $r$, calcula una promesa $a$ y la envía a $\mathcal{V}$.
+        \item \textit{Desafío (\textit{Challenge} $e$):} $\mathcal{V}$ selecciona un desafío aleatorio $e \leftarrow \mathcal{E}$ de un espacio de desafíos y lo transmite a $\mathcal{P}$.
+        \item \textit{Respuesta (\textit{Response} $z$):} $\mathcal{P}$ calcula la respuesta $z = f(x, w, r, e)$ y la envía a $\mathcal{V}$, quien evalúa una función de verificación pública $V(x, a, e, z) \in \{0, 1\}$ \cite{badiezadegan2026complexity}.
+    \end{enumerate}
+    Un protocolo $\Sigma$ satisface tradicionalmente la propiedad de \textit{Conocimiento Cero ante Verificador Honesto Especial} (\textit{Special HVZK}), lo que significa que el simulador puede generar transcripciones válidas $(a, e, z)$ eligiendo primero el desafío $e$ al azar y calculando $(a, z)$ de forma inversa.
+
+    \item \textbf{Argumentos No Interactivos de Conocimiento (NIZKAoK) y Heurística de Fiat-Shamir:}
+    En aplicaciones del mundo real, la interacción de múltiples rondas genera una latencia inaceptable. Para eliminar la interacción, se aplica la \textbf{Heurística de Fiat-Shamir} \cite{fiat1986how}. 
+    
+    En lugar de esperar el desafío aleatorio $e$ emitido por un verificador interactivo, el proponente computa el desafío internamente mediante el uso de una función hash criptográfica modelada como un \textbf{Oráculo Aleatorio} (\textit{Random Oracle Model} - ROM):
+    \begin{equation}
+    e = H(x \parallel a)
+    \end{equation}
+    La prueba no interactiva resultante es la tupla $\pi = (a, z)$. El verificador comprueba la validez calculando $e' = H(x \parallel a)$ y verificando que $V(x, a, e', z) = 1$. Esto transforma un protocolo $\Sigma$ interactivo en un Argumento No Interactivo de Conocimiento de Conocimiento Cero (\textit{Non-Interactive Zero-Knowledge Argument of Knowledge} - NIZKAoK) totalmente autónomo y verificable por terceros.
+\end{itemize}
+
+\paragraph{Ejemplos Didácticos e Intuitivos}
+Para ilustrar intuitivamente los conceptos teóricos descritos, se presentan dos analogías clásicas y sus formulaciones matemáticas equivalentes:
+
+\begin{itemize}
+    \item \textbf{Ejemplo Interactivo: La Cueva de Alí Babá (Visualización de la Propiedad ZKP):}
+    Imagine una cueva circular con una sola entrada/salida en la parte inferior y una puerta mágica en el extremo opuesto que requiere una palabra secreta (el testigo $w$) para abrirse. La puerta divide el camino en dos pasillos: la rama $A$ (izquierda) y la rama $B$ (derecha).
+    \begin{itemize}
+        \item \textit{Interacción:} El proponente $\mathcal{P}$ ingresa a la cueva y elige aleatoriamente caminar por el pasillo $A$ o $B$ sin que el verificador $\mathcal{V}$ lo vea. Luego, $\mathcal{V}$ se sitúa en la entrada y grita el desafío: ``¡Sal por el pasillo $A$!'' o ``¡Sal por el pasillo $B$!''.
+        \item \textit{Completitud:} Si $\mathcal{P}$ conoce el secreto $w$, puede abrir la puerta mágica si es necesario y salir siempre por el pasillo solicitado por $\mathcal{V}$.
+        \item \textit{Solidez:} Si un impostor $\mathcal{P}^*$ no conoce $w$, solo puede cumplir la orden si el pasillo pedido coincide con el pasillo en el que entró inicialmente (probabilidad $1/2$). Al repetir este proceso durante $k$ rondas independientes, la probabilidad de que el impostor engañe a $\mathcal{V}$ es de $(1/2)^k$. Para $k = 128$, la probabilidad es $2^{-128} \le \text{negl}(\lambda)$, garantizando solidez.
+        \item \textit{Conocimiento Cero:} Un observador externo solo ve a $\mathcal{P}$ saliendo por el pasillo correcto. No aprende nada sobre la palabra secreta $w$. Además, un simulador podría fabricar una grabación de video idéntica grabando únicamente los intentos donde el pasillo solicitado coincida con la elección previa de $\mathcal{P}$, demostrando que la prueba no revela información sobre el secreto.
+    \end{itemize}
+
+    \item \textbf{Ejemplo No Interactivo: El Protocolo de Schnorr Convertido mediante Fiat-Shamir:}
+    Considere el problema del logaritmo discreto sobre un grupo cíclico $\mathbb{Z}_q^*$ generado por $g$ de orden primo $q$ \cite{schnorr1991efficient, badiezadegan2026complexity}. La relación es $R_{DL} = \{ (y, x) \mid y = g^x \pmod q \}$.
+    \begin{enumerate}
+        \item \textit{Generación de la prueba no interactiva $\pi$:} $\mathcal{P}$ elige $r \leftarrow \mathbb{Z}_q$, calcula el compromiso $a = g^r \pmod q$, computa el desafío no interactivo $e = H(y \parallel a \parallel M)$ (donde $M$ puede ser un mensaje opcional) y calcula la respuesta $z = r + e \cdot x \pmod q$. La prueba generada es $\pi = (a, z)$.
+        \item \textit{Verificación no interactiva:} Cualquier verificador recomputa el desafío $e = H(y \parallel a \parallel M)$ y comprueba si se satisface la ecuación:
+        \begin{equation}
+        g^z \stackrel{?}{=} a \cdot y^e \pmod q
+        \end{equation}
+        Dado que $g^z = g^{r + ex} = g^r \cdot (g^x)^e = a \cdot y^e \pmod q$, la verificación es matemáticamente exacta. El oráculo aleatorio $H$ actúa como una fuente impredecible de aleatoriedad, garantizando que el proponente no pueda alterar $a$ después de conocer $e$.
+    \end{enumerate}
+\end{itemize}
+
+\subsubsection{Construcciones de ZKP sobre Retículos: De Stern a Lyubashevsky y el Framework LNP}
+
+\paragraph{Evolución de los ZKP sobre Retículos: Paradigma Combinatorio vs. Fiat-Shamir con Abortos}
+La transición de la criptografía basada en problemas algebraicos tradicionales (como la factorización de enteros o el logaritmo discreto) hacia la criptografía basada en retículos (\textit{lattice-based cryptography}) introdujo desafíos estructurales significativos en el diseño de pruebas de conocimiento cero.
+
+Históricamente, el primer protocolo fundamental de ZKP sobre retículos fue el esquema de Stern (1993), concebido originalmente para el problema de decodificación por síndrome (\textit{Syndrome Decoding}) y posteriormente adaptado al problema \textit{Short Integer Solution} (SIS). El protocolo de Stern se basa en un enfoque combinatorio de permutaciones aleatorias y compromisos ocultos. Sin embargo, su limitación principal reside en que posee un alto error de solidez por ronda de $2/3$. Para alcanzar un nivel de seguridad adecuado de $128$ bits, el protocolo requiere repetirse más de 219 veces ($\approx (2/3)^{219} \le 2^{-128}$), lo que genera pruebas extremadamente pesadas con un consumo de ancho de banda de varios cientos de kilobytes \cite{badiezadegan2026complexity, cayrel2012improved}.
+
+Para superar estas ineficiencias combinatorias, Cayrel et al. \cite{cayrel2012improved} desarrollaron una construcción mejorada basada en el problema SIS sobre retículos modulares. Mediante el uso de funciones de compromiso ($COM$) estadísticamente ocultas y computacionalmente vinculantes, combinadas con vectores de máscara aleatorios $u \in \mathbb{Z}_q^m$ y matrices de permutación $P_\sigma \in S_m$, Cayrel et al. lograron reducir el error de solidez por ronda a:
+\begin{equation}
+\epsilon = \frac{q+1}{2q} \approx \frac{1}{2}
+\end{equation}
+Esta reducción de $2/3$ a $1/2$ disminuyó drásticamente el número de repeticiones requeridas para alcanzar la solidez post-cuántica deseada, reduciendo la sobrecarga de almacenamiento y comunicación en retículos ideales (\textit{Ideal-SIS}) \cite{cayrel2012improved}.
+
+No obstante, el cambio de paradigma decisivo ocurrió con la introducción de la técnica de \textbf{Fiat-Shamir con Abortos} (\textit{Fiat-Shamir with aborts}) ideada por Lyubashevsky \cite{lyubashevsky2009fiat, lyubashevsky2012lattice}. En los protocolos $\Sigma$ tradicionales sobre grupos (como Schnorr), la respuesta del proponente adopta la forma $z = r + e \cdot x$. Si se intentara aplicar esta fórmula directamente sobre un secreto vectorial corto $s$ en un retículo, el valor de $z = y + c \cdot s$ revelaría información parcial sobre la clave secreta $s$ a través de la norma y distribución de $z$. 
+
+Para evitar la fuga de información sin necesidad de ocultar la estructura mediante permutaciones pesadas, Lyubashevsky introdujo la técnica de \textbf{muestreo por rechazo} (\textit{rejection sampling}): el proponente calcula $z = y + c \cdot s$ y comprueba si la distribución de $z$ depende del secreto $s$. Si $z$ excede un determinado umbral de norma o se desvía de una distribución uniforme/gaussiana independiente de $s$, el proponente \textbf{aborta} la ejecución de la ronda y recomienza el proceso con una nueva aleatoriedad $y$. Esto garantiza rigurosamente la propiedad de cero conocimiento mientras genera respuestas algebraicas directas y compactas \cite{lyubashevsky2012lattice}.
+
+\paragraph{Formulación de Relaciones Lineales y Restricciones Cuadráticas sobre Retículos}
+Los sistemas modernos de ZKP sobre retículos estructuran las afirmaciones criptográficas mediante relaciones algebraicas modulares definidas sobre un anillo o cuerpo finito $\mathbb{Z}_q$.
+
+\begin{enumerate}
+    \item \textbf{Relación Inhomogeneous Small Integer Solution (ISIS):}
+    Dado un módulo $q \in \mathbb{N}$, una matriz pública $A \in \mathbb{Z}_q^{n \times m}$, un vector de síndrome público $u \in \mathbb{Z}_q^n$ y una cota de norma $\mathcal{B}_s > 0$, la relación de conocimiento para el problema ISIS se define formalmente como:
+    \begin{equation}
+    R_{ISIS} = \left\{ \left( (A, u, \mathcal{B}_s), s \right) \;\middle|\; A s \equiv u \pmod q \;\;\land\;\; \|s\| \le \mathcal{B}_s \right\}
+    \end{equation}
+    Akleylek y Soysaldı \cite{akleylek2021post} formalizan cómo esta relación permite construir esquemas de autenticación y ZKP post-cuánticos eficientes para entornos restringidos como IoT. La seguridad del protocolo descansa en la dureza de encontrar un vector no nulo corto $s$ que pertenezca al conjunto de soluciones del sistema lineal en el peor de los casos sobre retículos modulares $L_q^\perp(A) = \{x \in \mathbb{Z}^m \mid Ax \equiv 0 \pmod q\}$ \cite{akleylek2021post}.
+
+    \item \textbf{Relaciones para Firmas e Identidades ($R_{Sign}$) y Restricciones Cuadráticas:}
+    En protocolos de acreditación de identidad, firmas digitales y pruebas de privacidad avanzadas, no basta con probar relaciones puramente lineales $As = u \pmod q$. Se requiere demostrar que el testigo corto $s$ satisface simultáneamente un conjunto de restricciones cuadráticas modulares y ecuaciones bilineales:
+    \begin{equation}
+    R_{Quad} = \left\{ \left( (A, \{B_i\}, c), s \right) \;\middle|\; A s + \sum_{i} s_i B_i s \equiv c \pmod q \;\;\land\;\; \|s\|_\infty \le \mathcal{B}_s \right\}
+    \end{equation}
+    Estas relaciones cuadráticas permiten verificar en conocimiento cero que una clave secreta está correctamente firmada por una autoridad emisora sin revelar el contenido de la credencial ni la firma misma.
+\end{enumerate}
+
+\paragraph{El Framework LNP (Lyubashevsky-Nguyen-Plançon) y Construcciones de Pruebas Cortas}
+Para unificar y optimizar la demostración de relaciones lineales y cuadráticas sobre retículos, Lyubashevsky, Nguyen y Plançon desarrollaron el \textbf{Framework LNP} \cite{lyubashevsky2019framework}, extendido posteriormente por Bootle et al. \cite{baum2020concretely}.
+
+El Framework LNP opera sobre retículos en módulos definidos en el anillo de polinomios $R_q = \mathbb{Z}_q[X]/(X^n + 1)$ y se fundamenta en los siguientes componentes algebraicos:
+\begin{itemize}
+    \item \textbf{Esquema de Compromiso BDLOP:} Un esquema de compromiso de tipo Pedersen adaptado a retículos que es aditivamente homomórfico y computacionalmente vinculante bajo la dureza del problema Module-SIS (M-SIS) y estadísticamente oculto bajo Module-LWE (M-LWE) \cite{lyubashevsky2019framework}.
+    \item \textbf{Pruebas de Producto Escalar en Retículos (\textit{Lattice Inner-Product Proofs}):} Permite al proponente convencer al verificador de que un conjunto de vectores comprometidos satisface ecuaciones cuadráticas de la forma $\langle s_1, s_2 \rangle = c$, reduciendo el tamaño de la prueba de manera equivalente a las técnicas tipo \textit{Bulletproofs}, pero basadas exclusivamente en la dureza de retículos.
+    \item \textbf{Integración con Abortos:} Combina el protocolo $\Sigma$ no interactivo (vía Fiat-Shamir) con parámetros de rechazo optimizados, garantizando que el tamaño total de la prueba se mantenga en el orden de pocos kilobytes (típicamente entre $8 \text{ KB}$ y $15 \text{ KB}$), en contraste con los megabytes requeridos por los esquemas combinatorios tipo Stern \cite{lyubashevsky2019framework, ma2026laasso}.
+\end{itemize}
+
+\subsubsection{El Obstáculo del Rebobinado Cuántico (Quantum Rewinding Barrier)}
+
+\paragraph{Mecanismo Clásico de Rebobinado y el Lemma de Bifurcación (\textit{Forking Lemma})}
+En la criptografía clásica, las demostraciones formales de solidez (\textit{soundness}) y la propiedad de argumento de conocimiento para protocolos $\Sigma$ e identificaciones no interactivas se basan fundamentalmente en la técnica del \textbf{rebobinado} (\textit{rewinding}) y en el \textit{Forking Lemma} (introducido por Pointcheval y Stern).
+
+Bajo este paradigma, la prueba de seguridad se construye mediante un \textbf{Extractor de Conocimiento} ($\mathcal{E}$) determinista o probabilístico en tiempo polinomial que interactúa con un proponente deshonesto $\mathcal{P}^*$ como una ``caja negra'':
+\begin{enumerate}
+    \item $\mathcal{E}$ ejecuta a $\mathcal{P}^*$ hasta que este emite un compromiso inicial $a$.
+    \item $\mathcal{E}$ envía un primer desafío aleatorio $e_1$ y registra la respuesta válida $z_1$, obteniendo la transcripción $(a, e_1, z_1)$.
+    \item A continuación, $\mathcal{E}$ \textbf{rebobina} el estado de ejecución interno de $\mathcal{P}^*$ al punto exacto inmediatamente posterior al envío del compromiso $a$.
+    \item En este estado restaurado, $\mathcal{E}$ emite un segundo desafío diferente $e_2 \neq e_1$ y obtiene una segunda respuesta válida $z_2$, generando la transcripción $(a, e_2, z_2)$.
+\end{enumerate}
+
+Al disponer de dos transcripciones válidas $((a, e_1, z_1), (a, e_2, z_2))$ que comparten el mismo compromiso $a$, el algoritmo extractor $\mathcal{E}$ aplica relaciones algebraicas directas para despejar y extraer el testigo secreto $w$ en tiempo polinomial, reduciendo la solidez de la prueba a la dureza del problema matemático subyacente.
+
+\paragraph{Falla Fundamental en el Modelo Cuántico: Colapso de la Función de Onda y No-Clonación}
+Cuando el adversario es una entidad cuántica, el mecanismo clásico de rebobinado colapsa categóricamente. Lombardi et al. \cite{barak2003lower, liu2019revisiting} formalizaron las restricciones matemáticas que impiden adaptar directamente el \textit{rewinding} al entorno post-cuántico.
+
+Un proponente deshonesto cuántico $\mathcal{P}^*$ almacena su estado interno como un estado cuántico complejo en superposición, representado por un vector de estado $|\psi\rangle$ en un espacio de Hilbert:
+\begin{equation}
+|\psi\rangle = \sum_{i} \alpha_i |i\rangle, \quad \text{con } \sum_{i} |\alpha_i|^2 = 1
+\end{equation}
+Cuando el extractor cuántico $\mathcal{E}$ interactúa con $\mathcal{P}^*$ para obtener la respuesta $z_1$ al primer desafío $e_1$, efectúa inevitables mediciones cuánticas sobre los registros de $\mathcal{P}^*$. Por el principio de medición von Neumann:
+\begin{itemize}
+    \item \textbf{Colapso del Estado:} La medición provoca el colapso irreversible de la función de onda de $|\psi\rangle$ a un autostado proyectado $|\psi_{e_1, z_1}\rangle$. Trazas o fases de la superposición previa son destruidas por decoherencia y medición.
+    \item \textbf{Imposibilidad de Clonación:} Por el \textbf{Teorema de No-Clonación} (\textit{No-Cloning Theorem}), el extractor $\mathcal{E}$ no puede realizar una copia de respaldo del estado cuántico desconocido $|\psi\rangle$ antes de enviar el primer desafío $e_1$.
+\end{itemize}
+
+En consecuencia, el extractor es incapaz de ``rebobinar'' o restaurar a $\mathcal{P}^*$ a su estado cuántico exacto $\vert{}\psi\rangle$ previo a la primera medición. Si $\mathcal{E}$ intenta enviar un segundo desafío $e_2$ sobre el estado alterado $\vert{}\psi_{e_1, z_1}\rangle$, la respuesta obtenida no guardará la coherencia necesaria con el compromiso $a$, invalidando el proceso de extracción del testigo \cite{barak2003lower}.
+
+\paragraph{Insuficiencia de las Reducciones Clásicas para Seguridad Poscuántica}
+La existencia del obstáculo del rebobinado cuántico conduce a un resultado crítico en la criptografía post-cuántica: \textbf{la dureza post-cuántica del problema matemático subyacente (como LWE o SIS) no garantiza automáticamente la seguridad post-cuántica del protocolo ZKP si su demostración de solidez depende de reducciones por rebobinado} \cite{liu2019revisiting}.
+
+Incluso si un problema como \textit{Learning With Errors} (LWE) es resistente a algoritmos cuánticos de tiempo polinomial (como el algoritmo de Shor), un atacante cuántico podría violar la propiedad de solidez o de cero conocimiento explotando la incapacidad del extractor para ejecutar el \textit{rewinding} sin destruir el estado de superposición. Por este motivo, el diseño de argumentos no interactivos de conocimiento poscuánticos (NIZKAoK) exige modelos analíticos más rigurosos, tales como:
+\begin{enumerate}
+    \item El \textbf{Modelo de Oráculo Aleatorio Cuántico} (\textit{Quantum Random Oracle Model} - QROM), donde el adversario cuántico puede realizar consultas en superposición a las funciones hash.
+    \item La propiedad de \textbf{Extractabilidad en Línea Recta} (\textit{Straight-Line Extractability} - SLE), la cual permite la extracción del testigo en una única ejecución sin necesidad de rebobinado.
+\end{enumerate}
+
+\subsubsection{Pruebas NIZKAoK con Extractabilidad en Línea Recta (Straight-Line Extractability - SLE)}
+
+\paragraph{Definición Formal de NIZKAoK con Extractabilidad en Línea Recta y Multi-Prueba}
+Para solventar de manera definitiva la incompatibilidad matemática entre el rebobinado clásico y la mecánica cuántica, la criptografía poscuántica adopta el paradigma de \textbf{Extractabilidad en Línea Recta} (\textit{Straight-Line Extractability} - SLE). En un sistema de Argumento No Interactivo de Conocimiento de Conocimiento Cero (NIZKAoK) con propiedad SLE, la extracción del testigo secreto $w$ se realiza en una sola pasada de ejecución directa (\textit{single forward pass}), anulando la necesidad de restaurar estados o repetir desafíos \cite{barak2003lower, ma2026laasso}.
+
+Un esquema NIZKAoK con extractabilidad en línea recta sobre una relación NP $R = \{(x, w)\}$ consta de un triplete de algoritmos probabilísticos en tiempo polinomial $\Pi = (\text{Setup}, \mathcal{P}, \mathcal{V})$ junto con un par Extractor $\mathcal{E} = (\mathcal{E}_1, \mathcal{E}_2)$:
+\begin{enumerate}
+    \item \textbf{Generación de Parámetros con Trampilla:} $\mathcal{E}_1(1^\lambda) \to (\sigma, \tau)$. El algoritmo extractor genera una Cadena de Referencia Común (CRS) $\sigma$ computacionalmente indistinguible de una CRS generada honestamente por $\text{Setup}(1^\lambda)$, junto con una información secreta de trampilla (\textit{trapdoor}) $\tau$.
+    \item \textbf{Extracción Directa:} $\mathcal{E}_2(\sigma, \tau, x, \pi) \to w'$. Dado el par $(\sigma, \tau)$, una instancia $x$ y una prueba no interactiva válida $\pi$, $\mathcal{E}_2$ extrae directamente un testigo $w'$ tal que $(x, w') \in R$.
+\end{enumerate}
+
+La propiedad de \textbf{Extractabilidad Multi-Prueba} (\textit{Multi-Proof Extractability}) extiende formalmente esta noción al entorno donde un adversario deshonesto emite una secuencia adaptativa de múltiples demostraciones $\{\pi_1, \pi_2, \dots, \pi_k\}$ sobre diferentes instancias $\{x_1, x_2, \dots, x_k\}$. La trampilla estática $\tau$ incrustada en la CRS permite al extractor $\mathcal{E}_2$ derivar individualmente cada testigo $w_i$ en tiempo polinomial sin alterar en ningún momento el canal de comunicación ni interferir con el estado cuántico del proponente \cite{ma2026laasso}.
+
+\paragraph{Mecanismo de Operación del Extractor: Trampas en la CRS y el Modelo QROM}
+La arquitectura de un extractor en línea recta opera abstrayendo la verificación del canal interactivo mediante el uso de esquemas de compromiso en modo dual (\textit{dual-mode commitments}) o funciones de cifrado con trampilla de pérdida (\textit{lossy encryption}) \cite{barak2003lower, ma2026laasso}:
+
+\begin{itemize}
+    \item \textbf{Incrustación de Trampillas en la CRS:} En el modo de extracción, la CRS publica una clave de compromiso o clave pública de reticulado que contiene una trampilla algebraica $\tau$ (por ejemplo, una base corta de un retículo $L_q^\perp(\mathbf{A})$ bajo el problema LWE/SIS). Durante la construcción de la prueba no interactiva $\pi = (\mathbf{a}, \mathbf{z})$, el proponente emite un compromiso o cifrado del testigo $\mathbf{w}$. Mientras que para un verificador ordinario la CRS garantiza el ocultamiento perfecto de $\mathbf{w}$, el extractor $\mathcal{E}_2$, provisto de $\tau$, utiliza la trampilla para resolver el problema algebraicoy descifrar/descomprometer el testigo de manera determinista y directa.
+
+    \item \textbf{Extracción en el Modelo de Oráculo Aleatorio Cuántico (QROM):} Cuando la prueba no interactiva se construye en el QROM, los atacantes cuánticos pueden realizar consultas a la función hash $H$ en superposición de estados $\sum_{x, y} \alpha_{x,y} \vert{}x, y\rangle$. Para lograr la extractabilidad en este modelo sin rebobinado, esquemas como la transformación de Unruh o las variantes optimizadas del Framework LNP incrustan la respuesta en la propia estructura del oráculo reprogramable de forma determinista, permitiendo que la lectura del registro por parte de $\mathcal{E}_2$ recupere $w$ sin colapsar el estado del adversario \cite{liu2019revisiting, ma2026laasso}.
+\end{itemize}
+
+\paragraph{Demostración de la Solidez Poscuántica Estricta}
+La solidez poscuántica estricta de un sistema NIZKAoK basado en SLE se formaliza mediante la siguiente reducción:
+
+Sea $\mathcal{P}^*$ un proponente cuántico en tiempo polinomial (QPT) capaz de generar una prueba no interactiva válida $\pi$ para una instancia $x \notin L_R$ con probabilidad no despreciable $\epsilon(\lambda)$. Se define el experimento de extracción sobre el par de algoritmos $(\mathcal{E}_1, \mathcal{E}_2)$:
+\begin{equation}
+\Pr \left[ 
+\begin{array}{c} 
+(\sigma, \tau) \leftarrow \mathcal{E}_1(1^\lambda), \\ 
+(x, \pi) \leftarrow \mathcal{P}^*(\sigma), \\ 
+w' \leftarrow \mathcal{E}_2(\sigma, \tau, x, \pi) 
+\end{array} 
+\;\middle|\; 
+\mathcal{V}(\sigma, x, \pi) = 1 \;\land\; (x, w') \notin R 
+\right] \le \text{negl}(\lambda)
+\end{equation}
+
+Puesto que el extractor $\mathcal{E}_2$ opera en una sola línea recta (\textit{straight-line}) sin ejecutar interrupciones, mediciones sobre registros de superposición interna, ni peticiones de reinicio al sistema, no existe perturbación sobre la función de onda del adversario cuántico. En consecuencia, la solidez del protocolo es \textbf{absoluta y strictly poscuántica}, garantizando que ningún algoritmo cuántico pueda falsificar una prueba sin que el testigo equivalente sea recuperable instantáneamente mediante la trampilla de la CRS \cite{barak2003lower, ma2026laasso}.
+
+\subsubsection{Privacidad del Canal y Verificadores Designados: El Mecanismo de Token Hiding}
+
+\paragraph{El Problema del Verificador No Designado y la Intercepción por Terminales Comprometidos}
+En los protocolos de autenticación distribuidos y sistemas de inicio de sesión único (\textit{Single Sign-On} - SSO), las credenciales y pruebas criptográficas generadas por el usuario deben transmitirse frecuentemente a través de intermediarios no confiables o redes públicas antes de alcanzar la entidad verificadora final \cite{ma2026laasso}.
+
+Si las pruebas de conocimiento cero (ZKP) o los tokens de autenticación se transmitieran en texto claro a través del canal de comunicación, surgiría el problema del \textit{verificador no designado} \cite{ma2026laasso}. Un cajero automático comprometido mediante soporte malicioso o dispositivos de captura ilegítima (\textit{skimmers}) podría inspeccionar el contenido del token, extraer metadatos de la transacción o rastrear las pruebas enviadas en sesiones sucesivas \cite{ma2026laasso, liu2019revisiting}. 
+
+Para prevenir estos ataques de rastreabilidad y proteger la identidad del usuario frente a intermediarios deshonestos, los sistemas modernos de NIZKAoK integran el mecanismo de \textbf{ocultamiento de tokens} (\textit{token hiding}), garantizando que la prueba generada solo sea descifrable y verificable por el servidor bancario legítimo (verificador designado).
+
+\subsubsection{Privacidad del Canal y Verificadores Designados: El Mecanismo de Token Hiding}
+
+\paragraph{El Problema del Verificador No Designado y la Intercepción por Terminales Comprometidos}
+En los protocolos de autenticación distribuidos y sistemas de inicio de sesión único (\textit{Single Sign-On} - SSO), las credenciales y pruebas criptográficas generadas por el usuario deben transmitirse frecuentemente a través de intermediarios no confiables o redes públicas antes de alcanzar la entidad verificadora final \cite{ma2026laasso}.
+
+Si las pruebas de conocimiento cero (ZKP) o los tokens de autenticación se transmitieran en texto claro a través del canal de comunicación, surgiría el problema del \textit{verificador no designado} \cite{ma2026laasso}. Un cajero automático comprometido mediante soporte malicioso o dispositivos de captura ilegítima (\textit{skimmers}) podría inspeccionar el contenido del token, extraer metadatos de la transacción o rastrear las pruebas enviadas en sesiones sucesivas \cite{ma2026laasso, liu2019revisiting}. 
+
+Para prevenir estos ataques de rastreabilidad y proteger la identidad del usuario frente a intermediarios deshonestos, los sistemas modernos de NIZKAoK integran el mecanismo de \textbf{ocultamiento de tokens} (\textit{token hiding}), garantizando que la prueba generada solo sea descifrable y verificable por el servidor bancario legítimo (verificador designado).
+
+\subsubsection{Propiedades Avanzadas de Privacidad: No Vinculabilidad y Denegabilidad Total}
+
+\paragraph{No Vinculabilidad de Credenciales y Tokens (\textit{Unlinkability})}
+En protocolos de autenticación anonimizados y sistemas transaccionales poscuánticos, la \textbf{no vinculabilidad} (\textit{unlinkability}) garantiza que un adversario o servidor intermedio no pueda determinar si dos o más ejecuciones del protocolo provienen del mismo usuario o dispositivo \cite{ma2026laasso}.
+
+Formalmente, consideremos dos sesiones de autenticación $i$ y $j$ realizadas por el mismo cliente utilizando una clave secreta $s$, las cuales producen los tokens de autenticación $\text{tok}^{(i)}$ y $\text{tok}^{(j)}$. La propiedad de no vinculabilidad establece que para cualquier adversario en tiempo polinomial probabilístico (PPT) $\mathcal{A}$, la ventaja de distinguir entre dos tokens generados por el mismo usuario y dos tokens generados por usuarios totalmente distintos es infinitesimal \cite{ma2026laasso}:
+\begin{equation}
+\left| \Pr\left[ \mathcal{A}\left(\text{tok}^{(i)}(s), \text{tok}^{(j)}(s)\right) = 1 \right] - \Pr\left[ \mathcal{A}\left(\text{tok}^{(i)}(s_1), \text{tok}^{(j)}(s_2)\right) = 1 \right] \right| \le \text{negl}(\lambda)
+\end{equation}
+
+En la arquitectura propuesta, esta garantía se logra mediante dos capas de aleatorización:
+\begin{enumerate}
+    \item \textbf{Aleatorización de Máscaras sobre el Retículo:} En cada iteración del argumento NIZKAoK, la respuesta $z = y + c \cdot s$ y el compromiso $a$ emplean vectores de máscara efímeros $y \stackrel{\$}{\leftarrow} D_{\sigma}^m$ totalmente independientes tomados de una distribución gaussiana discreta (o uniforme), lo que invalida cualquier correlación algebraica estática entre transacciones \cite{lyubashevsky2012lattice, ma2026laasso}.
+    \item \textbf{Cifrado Híbrido con Claves Efímeras:} Tal como se demostró en el mecanismo de \textit{token hiding}, cada token $\text{tok} = (\text{tok}_1, \text{tok}_2)$ se encapsula mediante una clave simétrica efímera $K$ de un solo uso bajo Kyber (ML-KEM) y AES-256 \cite{ma2026laasso}. Puesto que ambos componentes resultan indistinguibles de cadenas aleatorias uniformes sobre $\{0,1\}^*$, dos transacciones del mismo usuario exhiben distribuciones numéricas estadísticamente independientes y no vinculables.
+\end{enumerate}
+
+\paragraph{Denegabilidad Total (\textit{Full Deniability}) y Simulación de Sesión}
+La propiedad de \textbf{denegabilidad total} (\textit{full deniability} / \textit{plausible deniability}), analizada formalmente por An et al. \cite{an2023secrethandshakes}, resulta indispensable para proteger al usuario contra coerciones o auditorías maliciosas posteriores a la transacción (\textit{post-hoc coercion}). Si un atacante o una entidad reguladora intercepta la transcripción de comunicación completa de una sesión pasada $\mathcal{T}$, la denegabilidad total asegura que el usuario puede negar legítimamente haber participado en dicha interacción, demostrando que cualquier tercero o el propio verificador podría haber fabricado la transcripción por sí mismo \cite{an2023secrethandshakes}.
+
+Matemáticamente, la denegabilidad total se fundamenta en la existencia de un \textbf{Simulador de Transcripción} $\mathcal{S}_{den}$ que puede ejecutarse utilizando únicamente la clave pública del verificador o parámetros públicos de la CRS, sin requerir la clave privada del usuario $s$ ni la cooperación activa de este \cite{an2023secrethandshakes}:
+\begin{equation}
+\mathcal{T}_{real} = \langle \mathcal{P}(s), \mathcal{V}(vpk) \rangle \;\approx_c\; \mathcal{S}_{den}(vpk) = \mathcal{T}_{sim}
+\end{equation}
+
+En un protocolo con verificador designado y denegabilidad total (como los esquemas de \textit{secret handshakes} de An et al. \cite{an2023secrethandshakes}), la clave de verificación o la trampa del verificador le confiere a este la capacidad técnica de simular transcripciones indistinguibles de las reales. De este modo, si la transcripción $\mathcal{T}$ se expone a un tribunal u observador externo, carece de valor probatorio legal o criptográfico: el verificador no puede probar a un tercero que la prueba fue generada por el usuario y no sintetizada por el propio verificador \cite{an2023secrethandshakes, ma2026laasso}.
+
+\subsubsection{Estado del Arte Comparativo de Frameworks ZKP Poscuánticos}
+
+\paragraph{Análisis Comparativo de Paradigmas Poscuánticos y Resistencia a Rebobinado Cuántico}
+La evolución de las pruebas de conocimiento cero en la era poscuántica está definida por la capacidad de los protocolos para mantener la solidez frente a adversarios con capacidades de computación cuántica. Mientras que los esquemas pioneros dependían exclusivamente de análisis de seguridad clásicos basados en el \textit{Forking Lemma}, las construcciones contemporáneas han adoptado modelos adaptados al Modelo de Oráculo Aleatorio Cuántico (QROM) y técnicas de Extractabilidad en Línea Recta (\textit{Straight-Line Extractability} - SLE) \cite{barak2003lower, liu2019revisiting}.
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Comparativa Teórica de Paradigmas ZKP frente a Atacantes Cuánticos y Extracción}
+\label{tab:zkp_quantum_comparison}
+\begin{tabular}{|p{3.2cm}|p{2.8cm}|p{3.2cm}|p{2.2cm}|p{3.2cm}|}
+\hline
+\textbf{Paradigma / Esquema} & \textbf{Problema Subyacente} & \textbf{Mecanismo de Extracción} & \textbf{Modelo de Seguridad} & \textbf{Garantía Poscuántica (QROM)} \\ \hline
+Stern (1993) / Cayrel et al. (2012) \cite{cayrel2012improved} & SIS / Decodificación por Síndrome & Rebobinado Clásico (\textit{Forking}) & Clásico (ROM) & \textbf{Vulnerable} al colapso de la función de onda \cite{barak2003lower}. \\ \hline
+Fiat-Shamir con Abortos (Lyubashevsky) \cite{lyubashevsky2012lattice} & SIS / LWE sobre Retículos & Rebobinado Clásico / Muestreo por Rechazo & QROM & \textbf{Condicional} (Requiere parámetros de aborto expandidos) \cite{liu2019revisiting}. \\ \hline
+Framework LNP / Bootle et al. \cite{lyubashevsky2019framework, baum2020concretely} & M-SIS / M-LWE (Anillos $R_q$) & Rebobinado Adaptado / BDLOP & QROM & \textbf{Robusto} mediante reducciones strictly sobre retículos \cite{lyubashevsky2019framework}. \\ \hline
+\textbf{Arquitectura LAASSO (SLE)} \cite{ma2026laasso} & Module-LWE / Module-SIS & \textbf{Extractabilidad en Línea Recta (SLE)} & QROM + Trampilla CRS & \textbf{Estrictamente Poscuántica} (Inmune a fallos de rebobinado) \cite{barak2003lower, ma2026laasso}. \\ \hline
+\end{tabular}
+\end{table}
+
+\paragraph{Evaluación Cuantitativa de Métricas de Rendimiento}
+La viabilidad operativa de un sistema ZKP poscuántico en entornos reales (tales como dispositivos de borde, tarjetas inteligentes o transacciones financieras distribuidas) se mide a través del tamaño de la prueba generada, la latencia computacional de generación/verificación y la complejidad de las operaciones en el anillo $\mathbb{Z}_q$ o $R_q = \mathbb{Z}_q[X]/(X^n + 1)$ \cite{badiezadegan2026complexity, lyubashevsky2019framework, ma2026laasso}.
+
+Las construcciones combinatorias tipo Stern sufren de una sobrecarga de tamaño inaceptable para canales de bajo ancho de banda, requiriendo cientos de kilobytes debido a las múltiples repeticiones necesarias para mitigar el error de solidez de $2/3$ \cite{badiezadegan2026complexity, cayrel2012improved}. En contraste, los marcos basados en polinomios modulares e integraciones de producto escalar (como LNP y LAASSO) reducen el tamaño de la prueba a un rango de $4 \text{ a } 15 \text{ KB}$ mediante multiplicaciones polinómicas eficientes ejecutadas con la Transformada de Número Entero (\textit{Number Theoretic Transform} - NTT) \cite{lyubashevsky2019framework, ma2026laasso}.
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Matriz Técnico-Cuantitativa de Frameworks ZKP Poscuánticos}
+\label{tab:zkp_metrics_matrix}
+\begin{tabular}{|p{3.4cm}|p{2.3cm}|p{2.2cm}|p{3.5cm}|p{3.2cm}|}
+\hline
+\textbf{Framework / Protocolo} & \textbf{Tamaño de Prueba (KB)} & \textbf{Tiempo Gen. ($\text{ms}$)} & \textbf{Operaciones Dominantes ($\mathbb{Z}_q / R_q$)} & \textbf{Relación Soportada} \\ \hline
+Pruebas Combinatorias (Stern / Cayrel) \cite{cayrel2012improved} & $100 - 300 \text{ KB}$ & $150 - 500 \text{ ms}$ & Permutaciones $P_\sigma$ y funciones hash & Relaciones SIS binarias/trinarias. \\ \hline
+Circuitos Aritméticos Generales (Baum et al.) \cite{baum2020concretely} & $20 - 50 \text{ KB}$ & $50 - 150 \text{ ms}$ & Productos internos modulares sobre $R_q$ & Circuitos aritméticos arbitrarios. \\ \hline
+Framework LNP (Lyubashevsky et al.) \cite{lyubashevsky2019framework} & $8 - 15 \text{ KB}$ & $10 - 30 \text{ ms}$ & Multiplicación Matriz-Vector NTT en $R_q$ & Restricciones lineales y cuadráticas. \\ \hline
+\textbf{Arquitectura LAASSO (SLE + Token Hiding)} \cite{ma2026laasso} & \textbf{$4 - 9 \text{ KB}$} & \textbf{$2 - 10 \text{ ms}$} & Multiplicación NTT + Encapsulamiento Kyber/AES & $R_{ISIS}$, $R_{Sign}$ y ocultación de tokens. \\ \hline
+\end{tabular}
+\end{table}
+
+\paragraph{Síntesis Teórica y Selección de la Arquitectura}
+La integración de las propiedades analizadas determina que la arquitectura compuesta por \textbf{NIZKAoK con Extractabilidad en Línea Recta (SLE)} y \textbf{Ocultación de Tokens (\textit{Token Hiding}) basada en Kyber/AES} \cite{ma2026laasso} representa la solución óptima para el prototipo del marco teórico. Esta combinación garantiza:
+\begin{enumerate}
+    \item \textbf{Inmunidad Cuántica Absoluta:} Al prescindir del rebobinado, elimina la vulnerabilidad derivada del colapso del estado cuántico demostrada por Lombardi et al. \cite{barak2003lower}.
+    \item \textbf{Eficiencia Extrema:} Ofrece el menor tamaño de prueba ($4 - 9 \text{ KB}$) y latencia ($2 - 10 \text{ ms}$), permitiendo su ejecución directa en chips de tarjetas o dispositivos IoT \cite{akleylek2021post, ma2026laasso}.
+    \item \textbf{Privacidad del Canal:} Transforma el canal de transmisión en un mediador ciego mediante el enmascaramiento con Kyber (ML-KEM), previniendo ataques de seguimiento, \textit{skimming} o perfilamiento de usuarios en nodos intermedios \cite{ma2026laasso}.
+\end{enumerate}

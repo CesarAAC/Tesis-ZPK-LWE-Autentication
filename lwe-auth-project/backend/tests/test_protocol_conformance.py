@@ -4,6 +4,7 @@ from benchmarking.conformance import run_conformance_checks
 from crypto_core.protocols.ecdsa import StandardECDSAProtocol
 from crypto_core.protocols.lwe_zk import BinaryLWEProtocol, StandardLWEProtocol
 from crypto_core.protocols.lwr_auth import LWRProtocol
+from crypto_core.protocols.proposed_lwe import ProposedLWEAuthProtocol
 from crypto_core.protocols.ring_lwe import RingLWEProtocol
 
 
@@ -19,6 +20,7 @@ class ProtocolConformanceTests(unittest.TestCase):
             BinaryLWEProtocol(),
             RingLWEProtocol(),
             LWRProtocol(),
+            ProposedLWEAuthProtocol(),
         ):
             with self.subTest(protocol=protocol.name):
                 checks = run_conformance_checks(protocol, protocol.resolve_parameters())

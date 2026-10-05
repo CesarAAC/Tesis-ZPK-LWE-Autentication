@@ -9,6 +9,7 @@ from crypto_core.protocols.ecdsa import StandardECDSAProtocol
 from crypto_core.protocols.lwe_zk import BinaryLWEProtocol, StandardLWEProtocol
 from crypto_core.protocols.ring_lwe import RingLWEProtocol
 from crypto_core.protocols.lwr_auth import LWRProtocol
+from crypto_core.protocols.proposed_lwe import ProposedLWEAuthProtocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,9 +88,14 @@ _PROTOCOL_SPECS: tuple[ProtocolSpec, ...] = (
         display_name="Proposed LWE Protocol",
         family="lwe",
         aliases=("custom_lwe",),
-        declared_dependencies=(),
-        implementation_factory=None,
-        development_note="Reservado para el protocolo diseñado en la tesis.",
+        declared_dependencies=("numpy", "cryptography"),
+        implementation_factory=ProposedLWEAuthProtocol,
+        development_note=(
+            "PQLite-Auth v2 con módulo dual: prueba Fiat-Shamir con abortos (NIZK en "
+            "ROM) sobre q' = 8380417 con bits altos/bajos; token ML-KEM-768 + "
+            "AES-256-GCM, tickets de un solo uso y acuerdo de clave sobre q = 3329. "
+            "La dureza con rango de prueba 3 debe revisarse; ver README."
+        ),
     ),
 )
 

@@ -2,6 +2,8 @@
 
 Coefficients in Z_q (q <= 2^16) are packed as little-endian uint16 values and
 Base64 encoded. Bit vectors are packed eight per byte (little-endian bit order).
+The ``pack_coefficients`` family bit-packs coefficients at ceil(log2 q) bits
+each (12 bits for q = 3329).
 """
 
 from __future__ import annotations
@@ -144,3 +146,67 @@ def decode_signed(
     """Decode values in [-bound, bound]; any larger magnitude is rejected."""
     _, offsets = decode_unsigned(value, field_name, shape, 2 * bound + 1)
     return offsets - bound
+
+
+def packed_bits(modulus: int) -> int:
+    """Bits used per coefficient in [0, modulus) by the bit-packed encoding."""
+    return max(1, (modulus - 1).bit_length())
+
+
+def packed_length(count: int, modulus: int) -> int:
+    """Bytes needed to bit-pack ``count`` coefficients in [0, modulus)."""
+    return (count * packed_bits(modulus) + 7) // 8
+
+
+def pack_coefficients(values: np.ndarray, modulus: int) -> bytes:
+    """Bit-pack coefficients in [0, modulus), ceil(log2 modulus) bits each.
+
+    Coefficients and bits are both little-endian, so q = 3329 gives the usual
+    12 bits per coefficient (384 bytes for a polynomial of degree 256).
+    """
+    bits = packed_bits(modulus)
+    flat = np.ascontiguousarray(values, dtype=np.int64).reshape(-1)
+    bit_matrix = ((flat[:, None] >> np.arange(bits, dtype=np.int64)) & 1).astype(np.uint8)
+    return np.packbits(bit_matrix.reshape(-1), bitorder="little").tobytes()
+
+
+def unpack_coefficients(
+    raw: bytes,
+    field_name: str,
+    shape: tuple[int, ...],
+    modulus: int,
+) -> np.ndarray:
+    """Inverse of ``pack_coefficients``; rejects wrong lengths and values >= modulus."""
+    bits = packed_bits(modulus)
+    count = int(np.prod(shape))
+    if len(raw) != packed_length(count, modulus):
+        raise InvalidProtocolDataError(
+            f"'{field_name}' debe contener exactamente {packed_length(count, modulus)} bytes."
+        )
+    stream = np.unpackbits(np.frombuffer(raw, dtype=np.uint8), bitorder="little")
+    if stream[count * bits:].any():
+        raise InvalidProtocolDataError(
+            f"'{field_name}' contiene bits de relleno distintos de cero."
+        )
+    weights = np.left_shift(1, np.arange(bits, dtype=np.int64))
+    values = stream[: count * bits].reshape(count, bits).astype(np.int64) @ weights
+    if values.size and int(values.max()) >= modulus:
+        raise InvalidProtocolDataError(
+            f"'{field_name}' contiene coeficientes fuera de rango."
+        )
+    return values.reshape(shape)
+
+
+def encode_packed(values: np.ndarray, modulus: int) -> str:
+    return encode_bytes(pack_coefficients(values, modulus))
+
+
+def decode_packed(
+    value: Any,
+    field_name: str,
+    shape: tuple[int, ...],
+    modulus: int,
+) -> tuple[bytes, np.ndarray]:
+    """Return the packed bytes and the coefficients of a Base64 bit-packed field."""
+    raw = decode_base64(value, field_name)
+    return raw, unpack_coefficients(raw, field_name, shape, modulus)

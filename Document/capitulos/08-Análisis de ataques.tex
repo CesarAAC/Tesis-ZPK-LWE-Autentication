@@ -1,0 +1,109 @@
+\subsection{Análisis de ataques}
+\label{sec:attack-analysis}
+
+La Tabla~\ref{tab:attack-analysis} resume las principales familias de ataques relevantes
+para cada protocolo. La presencia de una familia de ataque no implica necesariamente
+que el protocolo sea vulnerable bajo los parámetros empleados; se documenta para
+identificar las condiciones que deben satisfacerse para conservar el nivel de
+seguridad esperado.
+
+\begin{longtable}{p{2.5cm}p{3.0cm}p{3.6cm}p{4.1cm}}
+\caption{Ataques relevantes y mecanismos de mitigación.}
+\label{tab:attack-analysis}
+\\
+
+\toprule
+\textbf{Protocolo} &
+\textbf{Ataque / riesgo} &
+\textbf{Condición relevante} &
+\textbf{Mitigación / consideración} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{Protocolo} &
+\textbf{Ataque / riesgo} &
+\textbf{Condición relevante} &
+\textbf{Mitigación / consideración} \\
+\midrule
+\endhead
+
+ECDSA &
+\todoresult{ataque} &
+\todoresult{condición} &
+\todoresult{mitigación} \\
+
+ECDSA &
+\todoresult{ataque} &
+\todoresult{condición} &
+\todoresult{mitigación} \\
+
+LWE &
+\todoresult{ataque} &
+\todoresult{condición} &
+\todoresult{mitigación} \\
+
+LWE &
+\todoresult{ataque} &
+\todoresult{condición} &
+\todoresult{mitigación} \\
+
+Binary-LWE &
+\todoresult{ataque} &
+\todoresult{condición} &
+\todoresult{mitigación} \\
+
+Ring-LWE &
+\todoresult{ataque} &
+\todoresult{condición} &
+\todoresult{mitigación} \\
+
+LWR &
+\todoresult{ataque} &
+\todoresult{condición} &
+\todoresult{mitigación} \\
+
+LWE propio &
+\todoresult{ataque} &
+\todoresult{condición} &
+\todoresult{mitigación} \\
+
+\bottomrule
+\end{longtable}
+
+
+% ============================================================
+\subsection{Seguridad de implementación}
+\label{sec:implementation-security}
+
+Además de la seguridad matemática de cada construcción, se analizaron riesgos
+relacionados con su implementación.
+
+\begin{table}[H]
+\centering
+\caption{Aspectos de seguridad operacional de las implementaciones.}
+\label{tab:implementation-security}
+\small
+\begin{tabularx}{\textwidth}{lCCCCY}
+\toprule
+\textbf{Protocolo} &
+\textbf{RNG} &
+\textbf{Nonce} &
+\textbf{Side channels} &
+\textbf{Parámetros} &
+\textbf{Observaciones} \\
+\midrule
+
+ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+% ============================================================

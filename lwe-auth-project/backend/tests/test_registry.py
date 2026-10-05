@@ -2,6 +2,7 @@ import unittest
 
 from crypto_core.exceptions import ProtocolUnavailableError, UnknownProtocolError
 from crypto_core.registry import (
+    ProtocolSpec,
     available_protocol_names,
     get_protocol,
     get_protocol_spec,
@@ -23,10 +24,10 @@ class ProtocolRegistryTests(unittest.TestCase):
             ),
         )
 
-    def test_only_complete_protocols_are_advertised(self) -> None:
+    def test_all_six_candidates_are_complete_and_advertised(self) -> None:
         self.assertEqual(
             available_protocol_names(),
-            ("ecdsa", "standard_lwe", "binary_lwe", "ring_lwe", "lwr"),
+            ("ecdsa", "standard_lwe", "binary_lwe", "ring_lwe", "lwr", "proposed_lwe"),
         )
 
     def test_legacy_ecdsa_alias_resolves(self) -> None:
@@ -43,9 +44,24 @@ class ProtocolRegistryTests(unittest.TestCase):
         self.assertEqual(get_protocol("lwr").name, "lwr")
         self.assertEqual(get_protocol("lwrounding").name, "lwr")
 
-    def test_only_proposed_protocol_remains_unavailable(self) -> None:
+    def test_proposed_protocol_resolves_by_id_and_alias(self) -> None:
+        self.assertEqual(get_protocol("proposed_lwe").name, "proposed_lwe")
+        self.assertEqual(get_protocol("custom_lwe").name, "proposed_lwe")
+        self.assertIn("cryptography", get_protocol_spec("proposed_lwe").declared_dependencies)
+
+    def test_catalog_entry_without_implementation_fails_closed(self) -> None:
+        pending = ProtocolSpec(
+            protocol_id="pending",
+            display_name="Pending",
+            family="none",
+            aliases=(),
+            declared_dependencies=(),
+            implementation_factory=None,
+            development_note="Sin implementar.",
+        )
+        self.assertFalse(pending.available)
         with self.assertRaises(ProtocolUnavailableError):
-            get_protocol("proposed_lwe")
+            pending.require_implementation()
 
     def test_unknown_protocol_is_rejected(self) -> None:
         with self.assertRaises(UnknownProtocolError):

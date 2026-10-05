@@ -1,0 +1,377 @@
+\subsection{Requisitos operacionales y experiencia de usuario}
+\label{sec:operational-results}
+
+\begin{table}[H]
+\centering
+\caption{Comparación de requisitos operacionales.}
+\label{tab:operational-comparison}
+\small
+\begin{tabularx}{\textwidth}{lCCCCCY}
+\toprule
+\textbf{Protocolo} &
+\textbf{Registro} &
+\textbf{Estado} &
+\textbf{Servidor online} &
+\textbf{Secreto cliente} &
+\textbf{Verif. offline} &
+\textbf{Observaciones} \\
+\midrule
+
+ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Desde la perspectiva del usuario final, \todoresult{describir cuáles diferencias son
+visibles para el usuario y cuáles quedan ocultas por la aplicación}.
+
+
+% ============================================================
+\subsection{Dependencias de confianza y arquitectura}
+\label{sec:trust-model}
+
+En lugar de tratar la centralización como una propiedad binaria, se analizan
+explícitamente las dependencias de confianza de cada construcción.
+
+\begin{table}[H]
+\centering
+\caption{Dependencias de confianza e infraestructura.}
+\label{tab:trust-model}
+\small
+\begin{tabularx}{\textwidth}{lCCCCYY}
+\toprule
+\textbf{Protocolo} &
+\textbf{Autoridad} &
+\textbf{PKI} &
+\textbf{Estado servidor} &
+\textbf{Secreto servidor} &
+\textbf{Compromiso servidor} &
+\textbf{Observaciones} \\
+\midrule
+
+ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ============================================================
+\subsection{Comparación global}
+\label{sec:global-comparison}
+
+La Tabla~\ref{tab:global-summary} resume las principales métricas cuantitativas.
+Esta tabla no pretende producir un ranking absoluto entre protocolos, sino permitir
+identificar visualmente los compromisos existentes entre las diferentes alternativas.
+
+\begin{table}[H]
+\centering
+\caption{Resumen cuantitativo de los resultados principales.}
+\label{tab:global-summary}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lrrrrrr}
+\toprule
+
+\textbf{Protocolo} &
+\textbf{Auth. (ms)} &
+\textbf{RAM pico} &
+\textbf{Comunicación} &
+\textbf{Clave pública} &
+\textbf{Clave privada} &
+\textbf{Seguridad estimada} \\
+
+&
+&
+\textbf{KB} &
+\textbf{bytes} &
+\textbf{bytes} &
+\textbf{bytes} &
+\textbf{bits} \\
+
+\midrule
+
+ECDSA
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{} \\
+
+LWE
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{} \\
+
+Binary-LWE
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{} \\
+
+Ring-LWE
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{} \\
+
+LWR
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{} \\
+
+LWE propio
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{}
+& \todoresult{} \\
+
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+
+% ============================================================
+\subsection{Análisis multidimensional}
+\label{sec:multidimensional-analysis}
+
+Una única métrica no permite determinar la conveniencia de una construcción
+criptográfica. Un protocolo puede reducir el tiempo de ejecución a costa de incrementar
+el tamaño de las claves, mientras que otro puede reducir la comunicación aumentando
+la complejidad computacional.
+
+Por esta razón, los resultados se analizan como un conjunto de compromisos entre:
+
+\begin{equation}
+    (\text{seguridad},
+     \text{tiempo},
+     \text{memoria},
+     \text{comunicación},
+     \text{complejidad}).
+\end{equation}
+
+\subsubsection{Tiempo frente a comunicación}
+
+\begin{figure}[H]
+\centering
+\fbox{
+\parbox[c][6cm][c]{0.90\textwidth}{
+\centering
+\todoresult{Insertar gráfica de dispersión: \\
+eje X = tiempo de autenticación; \\
+eje Y = bytes transmitidos; \\
+tamaño del punto = RAM pico.}
+}}
+\caption{Relación entre tiempo de autenticación, volumen de comunicación y memoria.}
+\label{fig:time-bandwidth}
+\end{figure}
+
+
+% ============================================================
+\subsubsection{Seguridad frente a rendimiento}
+
+\begin{figure}[H]
+\centering
+\fbox{
+\parbox[c][6cm][c]{0.90\textwidth}{
+\centering
+\todoresult{Insertar gráfica: \\
+eje X = seguridad estimada; \\
+eje Y = tiempo de autenticación.}
+}}
+\caption{Relación entre seguridad estimada y costo computacional.}
+\label{fig:security-performance}
+\end{figure}
+
+
+\subsection{Discusión}
+\label{sec:benchmark-discussion}
+
+Los experimentos muestran que no existe necesariamente una alternativa que optimice
+simultáneamente todas las dimensiones estudiadas.
+
+Desde el punto de vista de rendimiento,
+\todoresult{hallazgo}.
+
+Respecto al consumo de memoria,
+\todoresult{hallazgo}.
+
+En términos de comunicación,
+\todoresult{hallazgo}.
+
+Respecto a la seguridad,
+\todoresult{hallazgo}.
+
+En términos de complejidad de implementación y despliegue,
+\todoresult{hallazgo}.
+
+Estos resultados evidencian un compromiso entre
+\todoresult{trade-offs principales}.
+
+
+% ============================================================
+\subsubsection{Comparación con ECDSA}
+\label{subsec:comparison-ecdsa}
+
+ECDSA constituye el punto de referencia utilizado durante la evaluación.
+
+Frente a esta alternativa, las construcciones basadas en retículos presentan
+\todoresult{ventajas observadas}, mientras que presentan costos adicionales asociados
+con \todoresult{desventajas observadas}.
+
+En particular,
+\todoresult{resultado cuantitativo importante}.
+
+
+% ============================================================
+\subsubsection{Comparación entre las variantes basadas en LWE}
+\label{subsec:lwe-comparison}
+
+Las variantes evaluadas muestran diferencias significativas en
+\todoresult{métricas relevantes}.
+
+LWE estándar presentó
+\todoresult{resultado}.
+
+Binary-LWE presentó
+\todoresult{resultado}.
+
+Ring-LWE presentó
+\todoresult{resultado}.
+
+LWR presentó
+\todoresult{resultado}.
+
+Estas diferencias permiten observar cómo modificaciones en la representación del
+secreto, la estructura algebraica o el mecanismo utilizado para introducir
+incertidumbre afectan los costos de una implementación real.
+
+
+% ============================================================
+\subsubsection{Evaluación del protocolo propuesto}
+\label{subsec:proposed-evaluation}
+
+El protocolo propuesto debe analizarse utilizando exactamente los mismos criterios que
+las demás alternativas.
+
+Los resultados muestran que
+\todoresult{hallazgo principal}.
+
+Su mayor ventaja observada corresponde a
+\todoresult{ventaja}.
+
+Su principal costo o limitación corresponde a
+\todoresult{limitación}.
+
+Frente a las demás variantes LWE,
+\todoresult{comparación}.
+
+Frente a ECDSA,
+\todoresult{comparación}.
+
+Por tanto, los resultados sugieren que el protocolo
+\todoresult{interpretación prudente basada exclusivamente en los resultados obtenidos}.
+
+
+% ============================================================
+\subsection{Amenazas a la validez}
+\label{sec:threats-validity}
+
+Los resultados presentados deben interpretarse considerando las siguientes amenazas a
+la validez.
+
+\subsubsection{Validez interna}
+
+Los tiempos de ejecución pueden verse afectados por procesos del sistema operativo,
+planificación del procesador, cachés y otros factores externos. Para reducir este
+efecto se utilizaron múltiples repeticiones, iteraciones de calentamiento y un entorno
+experimental controlado.
+
+\todoresult{Agregar otras amenazas internas identificadas.}
+
+
+\subsubsection{Validez externa}
+
+Los resultados corresponden al hardware, sistema operativo, versiones de software y
+parámetros descritos en la Sección~\ref{sec:experimental-environment}. Por esta razón,
+los valores absolutos pueden variar al utilizar hardware diferente.
+
+Sin embargo, el diseño experimental busca permitir la reproducción del procedimiento
+en otros entornos.
+
+\todoresult{Agregar otras amenazas externas.}
+
+
+\subsubsection{Validez de constructo}
+
+Las métricas utilizadas representan diferentes dimensiones de eficiencia y
+desplegabilidad, pero ninguna métrica individual captura completamente la calidad de
+un protocolo criptográfico.
+
+En particular, indicadores como líneas de código, cantidad de dependencias o número de
+parámetros deben interpretarse únicamente como aproximaciones a la complejidad de
+implementación y no como medidas absolutas de dificultad.
+
+
+\subsubsection{Limitaciones de la estimación de seguridad}
+
+Las estimaciones de seguridad dependen de los modelos de ataque, parámetros y
+herramientas disponibles al momento de realizar el estudio.
+
+\todoresult{Describir herramienta de estimación utilizada, versión, supuestos y
+limitaciones.}
+
+
+% ============================================================
+\subsection{Reproducibilidad}
+\label{sec:reproducibility}
+
+Con el propósito de facilitar la reproducción de los experimentos, el repositorio del
+proyecto conserva:
+
+\begin{itemize}
+    \item las implementaciones evaluadas;
+    \item los parámetros criptográficos utilizados;
+    \item los scripts de benchmarking;
+    \item la configuración del entorno de ejecución;
+    \item las versiones de las dependencias;
+    \item las migraciones o estructura de almacenamiento;
+    \item los resultados crudos de cada ejecución;
+    \item los procedimientos utilizados para generar las métricas agregadas.
+\end{itemize}
+
+El experimento correspondiente a este documento fue ejecutado utilizando el commit:
+
+\begin{center}
+    \texttt{\todoresult{hash del commit}}
+\end{center}
+
+y la configuración experimental:
+
+\begin{center}
+    \texttt{\todoresult{identificador de configuración}}
+\end{center}
+
