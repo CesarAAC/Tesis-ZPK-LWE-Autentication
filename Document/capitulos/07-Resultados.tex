@@ -285,47 +285,57 @@ seguridad correspondiente.
 \midrule
 
 ECDSA &
-ECDLP &
-\todoresult{} &
-\todoresult{} &
-\todoresult{} \\
+ECDLP (P-256) &
+$2^{128}$ &
+Roto (algoritmo de Shor) &
+Valor de referencia de la curva \\
 
 LWE &
 LWE &
-\todoresult{} &
-\todoresult{} &
-\todoresult{} \\
+$2^{128.0}$ &
+$2^{116.9}$ &
+Core-SVP; dual híbrido, $\beta_{\mathrm{BKZ}} = 438$ \\
 
 Binary-LWE &
 LWE con secreto binario &
-\todoresult{} &
-\todoresult{} &
-\todoresult{} \\
+$2^{128.5}$ &
+$2^{117.9}$ &
+Core-SVP; dual híbrido, $\beta_{\mathrm{BKZ}} = 440$ \\
 
 Ring-LWE &
 Ring-LWE &
-\todoresult{} &
-\todoresult{} &
-\todoresult{} \\
+$2^{128.2}$ &
+$2^{116.3}$ &
+Core-SVP; primal, $\beta_{\mathrm{BKZ}} = 439$ \\
 
 LWR &
 LWR &
-\todoresult{} &
-\todoresult{} &
-\todoresult{} \\
+$2^{128.6}$ &
+$2^{117.4}$ &
+Core-SVP; dual híbrido, $\beta_{\mathrm{BKZ}} = 440$ \\
 
 LWE propio &
-\todoresult{} &
-\todoresult{} &
-\todoresult{} &
-\todoresult{} \\
+Module-LWE y SelfTargetMSIS sobre $\mathcal{R}_{q'}$ &
+$2^{128.2}$ &
+$2^{116.3}$ &
+Core-SVP; primal, $\beta_{\mathrm{BKZ}} = 439$ \\
 
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Cuando se utilicen estimadores de seguridad, deberán registrarse también la versión de
-la herramienta, sus parámetros de entrada y los modelos de costo utilizados.
+Las cifras de los candidatos de retículos corresponden al ataque más barato contra la
+clave, estimado con el \textit{lattice-estimator} (\textit{commit} \texttt{53da598}) en el modelo
+de costo Core-SVP, tomando el mínimo entre los ataques primal y dual híbrido
+(Sección~\ref{sec:estimacion}). La solidez de sus pruebas, estimada como un problema SIS
+o MSIS, queda por encima en todos los casos: $2^{168.5}$ (LWE), $2^{184.3}$ (Binary-LWE),
+$2^{150.7}$ (Ring-LWE), $2^{167.9}$ (LWR) y $2^{150.7}$ (protocolo propio). Sus espacios de
+desafíos tienen entre $2^{129.6}$ y $2^{131.6}$ elementos, que una búsqueda de Grover reduce
+a unas $2^{65}$ evaluaciones del hash, el mismo orden que la búsqueda de Grover sobre una
+clave de AES-128 (Sección~\ref{sec:pqlite-seguridad}). El valor de ECDSA es el de referencia
+para P-256 y no se estima con la herramienta. Los parámetros de entrada de cada instancia y
+el procedimiento completo están documentados en el repositorio del proyecto
+(\texttt{docs/estimacion-de-dureza.md}).
 
 
 % ============================================================

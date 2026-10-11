@@ -1,0 +1,51 @@
+\subsection{Notación}
+\label{sec:notacion}
+
+En el resto del documento se usa la siguiente notación, y cada símbolo designa un único objeto.
+
+\paragraph{Enteros, anillos y vectores}
+Para un entero $q \ge 2$, $\mathbb{Z}_q = \mathbb{Z}/q\mathbb{Z}$, y sus elementos se representan por $\{0, 1, \dots, q-1\}$. Para un entero $r$ y un entero positivo $m$, $r \bmod^{\pm} m$ es el único entero congruente con $r$ módulo $m$ en el intervalo $(-m/2, m/2]$ (representante centrado). Se trabaja en los anillos
+\begin{equation}
+\mathcal{R} = \mathbb{Z}[x]/\langle x^{d}+1\rangle, \qquad \mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^{d}+1\rangle,
+\end{equation}
+con $d$ potencia de dos: sus elementos son polinomios de grado menor que $d$ y el producto se reduce con la regla $x^{d} = -1$. Los escalares y los polinomios se escriben en cursiva ($c$, $f$), los vectores de polinomios en negrita minúscula ($\mathbf{s} \in \mathcal{R}_q^{k}$) y las matrices en negrita mayúscula ($\mathbf{A} \in \mathcal{R}_q^{k \times k}$); $\mathbf{A}^{T}$ es la traspuesta. Un vector de $k$ polinomios se identifica con el vector de sus $k d$ coeficientes.
+
+\paragraph{Normas y conjuntos de elementos pequeños}
+Para $w \in \mathbb{Z}_q$, $|w|$ denota $|w \bmod^{\pm} q|$. Para un polinomio $f = \sum_{i} f_i x^i$,
+\begin{equation}
+\|f\|_\infty = \max_i |f_i|, \qquad \|f\|_1 = \sum_i |f_i|, \qquad \|f\|_2 = \Big(\sum_i f_i^2\Big)^{1/2},
+\end{equation}
+y para un vector de polinomios $\|\mathbf{f}\|_\infty$ es el máximo de $|f_i|$ sobre todos sus coeficientes. Para un entero $\eta \ge 0$, $S_\eta = \{ f \in \mathcal{R} : \|f\|_\infty \le \eta \}$ es el conjunto de polinomios con coeficientes en $\{-\eta, \dots, \eta\}$.
+
+\paragraph{Redondeo, muestreo y probabilidad}
+Para un real $y$, $\lfloor y \rfloor$ y $\lceil y \rceil$ son el piso y el techo, y $\lfloor y \rceil = \lfloor y + 1/2 \rfloor$ es el redondeo al entero más cercano. $v \xleftarrow{\$} X$ indica que $v$ se elige con distribución uniforme en el conjunto finito $X$, y $v \leftarrow \chi$ que se muestrea de la distribución $\chi$; aplicado a un polinomio o a un vector, cada coeficiente se muestrea de forma independiente. $\Pr[\cdot]$ denota una probabilidad, $\lambda$ el parámetro de seguridad y $\mathrm{negl}(\lambda)$ una función despreciable en $\lambda$. Cuando una función hash recibe varios argumentos, $\mathsf{H}(a_1, \dots, a_n)$, estos se codifican de forma inequívoca antes de concatenarlos (Sección~\ref{sec:xof}).
+
+La Tabla~\ref{tab:notacion} reúne los símbolos principales del marco teórico.
+
+\begin{table}[H]
+\centering
+\caption{Símbolos principales del marco teórico.}
+\label{tab:notacion}
+\small
+\begin{tabularx}{\textwidth}{lY}
+\toprule
+\textbf{Símbolo} & \textbf{Significado} \\
+\midrule
+$\mathcal{P}$, $\mathcal{V}$, $\mathsf{Sim}$, $\mathsf{Ext}$ & Probador, verificador, simulador y extractor de una prueba genérica. \\
+$x$, $\omega$, $R$ & Afirmación pública, testigo y relación. \\
+$a$, $c$, $z$, $\pi$ & Compromiso, desafío, respuesta y prueba de un protocolo $\Sigma$. \\
+$\mathsf{H}$ & Función hash modelada como oráculo aleatorio. \\
+$q$, $n$, $m$, $\chi$ & Módulo, dimensión del secreto, número de muestras y distribución del error de LWE. \\
+$\mathbf{A}$, $\mathbf{s}$, $\mathbf{e}$, $\mathbf{b}$ & Matriz pública, secreto, error y vector de muestras de un problema LWE. \\
+$k$, $\eta$ & Rango de un módulo (Module-LWE) y parámetro de la distribución $\mathrm{CBD}(\eta)$. \\
+$\mathbf{y}$, $\mathbf{w}$ & Máscara y compromiso de Fiat--Shamir con abortos. \\
+$\tilde{c}$, $\kappa$, $B_\kappa$ & Semilla del desafío, número de coeficientes no nulos del desafío y conjunto de desafíos. \\
+$\gamma_1$, $\gamma_2$, $\alpha$, $\beta$ & Anchura de la máscara, mitad del paso de redondeo, paso de redondeo ($\alpha = 2\gamma_2$) y cota de rechazo. \\
+$\mathsf{tk}$, $\nu$, $\Delta_\nu$, $\mathcal{L}_{\text{spent}}$ & Ticket, marca de tiempo, ventana de validez y registro de tickets consumidos. \\
+$vpk$, $vsk$, $K$, $\mathsf{ct}$ & Claves pública y privada de un KEM, clave encapsulada y texto cifrado. \\
+$\text{tok}_1$, $\text{tok}_2$, $\text{tok}$ & Texto cifrado del KEM, contenido cifrado con el AEAD y token completo. \\
+$\theta$, $\theta'$, $v$ & Valores ruidosos de las dos partes de un acuerdo de clave y pista de reconciliación. \\
+$\beta_{\mathrm{BKZ}}$ & Tamaño de bloque del algoritmo BKZ en la estimación de seguridad (distinto de la cota de rechazo $\beta$). \\
+\bottomrule
+\end{tabularx}
+\end{table}

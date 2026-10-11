@@ -36,20 +36,21 @@ class InstanceMappingTests(unittest.TestCase):
     def test_proposed_lwe_uses_the_proof_layer_at_rank_four(self) -> None:
         roles = _by_role("proposed_lwe")
         key, soundness, transport = roles["clave"], roles["solidez"], roles["transporte"]
-        self.assertEqual((key.n, key.m, key.q), (1024, 1024, 8380417))
-        self.assertEqual((soundness.rows, soundness.columns, soundness.bound), (1024, 2304, 131026))
-        self.assertEqual((transport.n, transport.q), (768, 3329))
+        self.assertEqual((key.n, key.m, key.q, key.secret), (1024, 1024, 8380417, ("centered_binomial", 6)))
+        self.assertEqual((soundness.rows, soundness.columns, soundness.bound), (1024, 2304, 130934))
+        self.assertEqual((transport.n, transport.q, transport.secret), (768, 3329, ("centered_binomial", 2)))
 
     def test_matched_parameter_sets_of_the_baselines(self) -> None:
         standard, binary, lwr, ring = (_by_role(name) for name in ("standard_lwe", "binary_lwe", "lwr", "ring_lwe"))
-        self.assertEqual((standard["clave"].n, standard["clave"].secret), (1024, ("centered_binomial", 2)))
-        self.assertEqual((binary["clave"].n, binary["clave"].secret), (1096, ("uniform", 0, 1)))
-        self.assertEqual((lwr["clave"].n, lwr["clave"].error), (1016, ("uniform", -1, 2)))
-        self.assertEqual((ring["clave"].n, ring["solidez"].columns), (1024, 3072))
+        self.assertEqual((standard["clave"].n, standard["clave"].secret), (1116, ("centered_binomial", 2)))
+        self.assertEqual((binary["clave"].n, binary["clave"].secret), (1196, ("uniform", 0, 1)))
+        self.assertEqual((lwr["clave"].n, lwr["clave"].error), (1112, ("uniform", -1, 2)))
+        self.assertEqual((ring["clave"].n, ring["clave"].secret), (1024, ("centered_binomial", 6)))
+        self.assertEqual(ring["solidez"].columns, 3072)
         # SIS bound = norm of an accepted response: gamma - kappa * (largest witness coefficient).
         self.assertEqual(standard["solidez"].bound, (1 << 17) - 31 * 2)
         self.assertEqual(binary["solidez"].bound, (1 << 17) - 31)
-        self.assertEqual(standard["solidez"].columns, 1024 + 1024 + 128)
+        self.assertEqual(standard["solidez"].columns, 1116 + 1116 + 128)
 
     def test_lwr_error_interval_matches_the_rounding_of_the_implementation(self) -> None:
         import numpy as np
@@ -104,13 +105,15 @@ class EstimatorValidationTests(unittest.TestCase):
         dilithium = hardness.SISInstance("solidez", "Dilithium2", 1024, 9 * 256, 8380417, 350209)
         self.assertEqual(hardness.estimate(self.estimator, dilithium)["beta"], 423)
 
-    def test_matched_candidates_are_within_one_bit_of_proposed_lwe(self) -> None:
-        reference = None
+    def test_every_candidate_reaches_128_bits_core_svp(self) -> None:
         for protocol_id in ("proposed_lwe", "standard_lwe", "binary_lwe", "lwr", "ring_lwe"):
-            key = hardness.estimate(self.estimator, _by_role(protocol_id)["clave"])
-            reference = reference or key["classical_bits"]
-            with self.subTest(protocol=protocol_id):
-                self.assertAlmostEqual(key["classical_bits"], reference, delta=1.0)
+            for role, instance in _by_role(protocol_id).items():
+                with self.subTest(protocol=protocol_id, role=role):
+                    bits = hardness.estimate(self.estimator, instance)["classical_bits"]
+                    self.assertGreaterEqual(bits, 128.0)
+                    if role == "clave":
+                        # Matched: no candidate more than one bit above the target.
+                        self.assertLess(bits, 129.0)
 
 
 if __name__ == "__main__":

@@ -1,337 +1,562 @@
-\subsubsection{Arquitectura General y Modelo de Amenazas}
+\subsection{Visión General y Modelo de Amenazas}
+\label{sec:architecture-threat-model}
 
-\paragraph{Definición Teórica y Objetivos del Protocolo}
+\paragraph{Objetivo del Protocolo}
 
-Se propone \textit{PQLite-Auth v2}, un esquema de autenticación no interactiva de conocimiento cero (\textit{Non-Interactive Zero-Knowledge Argument of Knowledge} - NIZKAoK) optimizado para entornos de baja capacidad de cómputo y transmisión sobre canales no confiables \cite{yang2025multiserver, ma2026laasso}. El protocolo se fundamenta en la dureza del problema \textit{Module Learning with Errors} (MLWE) sobre el anillo polinomial $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^{256} + 1 \rangle$, e integra un mecanismo de ocultación de tokens (\textit{Token Hiding}) y acuerdo de clave de sesión mediante reconciliación de errores en cuatro cuadrantes \cite{yang2025multiserver, ma2026laasso, lai2025leaky}.
+Se propone \textit{ML-ZKAuth}, un protocolo de autenticación en el que un dispositivo cliente demuestra a un servidor verificador designado que conoce la clave secreta asociada a su clave pública, mediante un argumento no interactivo de conocimiento cero sobre retículos, a través de una terminal intermedia que no es de confianza \cite{yang2025multiserver, ma2026laasso}. Tras una autenticación aceptada, cliente y servidor pueden acordar además una clave de sesión de 256 bits. El cliente es el probador y el servidor, el verificador. El protocolo busca ser liviano: una autenticación consta de cuatro mensajes, la prueba viaja en un token de unos 3.5~KB y el probador solo necesita aritmética de polinomios, funciones de la familia SHA-3, ML-KEM y AES, operaciones al alcance de dispositivos con recursos limitados. El protocolo combina los elementos del marco teórico: la prueba de Fiat--Shamir con abortos en la forma comprimida de Dilithium (Secciones~\ref{sec:fs-comprimido}, \ref{sec:highbits} y \ref{sec:sampleinball}), la ocultación del token con ML-KEM y AES-GCM (Sección~\ref{sec:kem-dem}), los tickets y marcas de tiempo para la frescura (Sección~\ref{sec:frescura}) y la reconciliación de Peikert para el acuerdo de clave (Sección~\ref{sec:peikert}). Este capítulo describe el protocolo tal como está implementado en el repositorio del trabajo; la Sección~\ref{sec:pqlite-implementacion} indica dónde se encuentra cada paso en el código.
 
-El objetivo primario de PQLite-Auth v2 es permitir que un dispositivo cliente demuestre la posesión de una clave secreta de retículo $\mathbf{s} \in \mathcal{R}_q^k$ ante un servidor verificador designado, garantizando las siguientes propiedades criptográficas \cite{lombardi2022postquantum, ma2026laasso}:
+\paragraph{Dos Capas sobre Dos Módulos}
 
-\begin{itemize}
-    \item \textbf{Resistencia Poscuántica y Solidez ($\text{Soundness}$):} Ningún adversario con acceso a computación clásica ni cuántica puede suplantar la identidad de un usuario legítimo sin resolver una instancia dura de MLWE \cite{regev2009lwe, badiezadegan2026complexity}.
-    \item \textbf{Conocimiento Cero ($\text{Zero-Knowledge}$):} El servidor verificador y los nodos intermedios obtienen cero información estructural sobre la clave privada $\mathbf{s}$ durante las interacciones del protocolo \cite{goldwasser1989knowledge, lai2025leaky}.
-    \item \textbf{Seguridad de Verificador Designado y No Vinculabilidad (\textit{Unlinkability}):} Las pruebas emitidas son computacionalmente indistinguibles de ruido aleatorio uniforme para cualquier entidad distinta del servidor central designado, impidiendo el rastreo o perfilamiento del cliente \cite{ma2026laasso, lombardi2022postquantum}.
-    \item \textbf{Prevención de Ataques de Repetición (\textit{Anti-Replay Security}):} La inclusión de tickets de un solo uso procesados de forma determinista impide la reutilización de pruebas capturadas previamente en el canal público \cite{ma2026laasso}.
-\end{itemize}
+El protocolo trabaja sobre dos anillos de polinomios con el mismo grado $d = 256$ y módulos distintos (Sección~\ref{sec:modulo-dual}):
+\begin{enumerate}
+    \item \textbf{Capa de prueba:} $\mathcal{R}_{q'} = \mathbb{Z}_{q'}[x]/\langle x^{256} + 1 \rangle$, con $q' = 8\,380\,417$ (el primo de 23 bits de ML-DSA) y rango $k' = 4$. Aquí viven la clave de identidad del cliente y la prueba de conocimiento cero.
+    \item \textbf{Capa de transporte:} $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^{256} + 1 \rangle$, con $q = 3329$ (el primo de 12 bits de ML-KEM) y rango $k = 3$. Aquí viven el cifrado del token con ML-KEM-768 y AES-256-GCM y el acuerdo de clave de sesión.
+\end{enumerate}
 
 \paragraph{Entidades y Actores del Sistema}
 
-La arquitectura de PQLite-Auth v2 se estructura formalmente a partir de tres actores abstractos con responsabilidades criptográficas delimitadas \cite{ma2026laasso, yang2025multiserver}:
-
 \begin{enumerate}
-    \item \textbf{Dispositivo Cliente / Elemento Seguro ($\mathcal{C}$):} Dispositivo de recursos limitados que almacena de forma inalterable en su memoria física protegida la clave secreta de retículo $\mathbf{s} \in \mathcal{R}_q^k$ y la clave pública de verificación del servidor $vpk$ \cite{mukil2026implementing, ma2026laasso}. El dispositivo $\mathcal{C}$ ejecuta la generación de la prueba NIZKAoK y el enmascaramiento híbrido sin exportar la clave secreta fuera del silicio \cite{mukil2026implementing}.
-    \item \textbf{Terminal Intermedia / Nodo Relevador ($\mathcal{T}$):} Interfaz física o terminal de acceso potencialmente hostil que actúa como un \textit{canal ciego de transmisión} (\textit{blind relay}) \cite{ma2026laasso}. La terminal $\mathcal{T}$ reenvía los bloques cifrados emitidos por $\mathcal{C}$ hacia el servidor central sin capacidad de inspeccionar, descifrar o validar las pruebas criptográficas \cite{ma2026laasso}.
-    \item \textbf{Servidor Verificador Designado ($\mathcal{S}$):} Entidad central de alta capacidad de cómputo o Módulo de Seguridad de Hardware (\textit{Hardware Security Module} - HSM) que custodia la clave privada de descifrado $vsk$ de Kyber, la base de datos de compromisos públicos $\mathbf{t} = \mathbf{A}\mathbf{s} + \mathbf{e} \pmod q$ y el registro de tickets consumidos (\textit{Spent Log}) \cite{yang2025multiserver, ma2026laasso}.
+    \item \textbf{Cliente ($\mathcal{C}$), el probador:} dispositivo, posiblemente con recursos limitados, que custodia la clave secreta de retículo $(\mathbf{s}, \mathbf{e})$ y su identificador $\mathsf{id}_{\mathcal{C}}$, y conoce los parámetros públicos del sistema, incluida la clave pública de cifrado $vpk$ del servidor \cite{mukil2026implementing, ma2026laasso}. Genera la prueba y el token sin exportar el material secreto. Su aritmética consiste en productos de polinomios en $\mathcal{R}_{q'}$ y en $\mathcal{R}_q$, y ambos anillos son compatibles con la NTT: completa sobre $q'$, como en ML-DSA, e incompleta sobre $q$, como en ML-KEM (Sección~\ref{sec:ntt}). Un dispositivo cliente puede, por tanto, reutilizar las implementaciones o los coprocesadores de NTT de esos dos estándares; el prototipo, en cambio, usa la convolución directa (Sección~\ref{sec:pqlite-limitaciones}).
+    \item \textbf{Terminal intermedia ($\mathcal{T}$):} cualquier intermediario que retransmite los mensajes entre $\mathcal{C}$ y $\mathcal{S}$. Se considera potencialmente hostil: puede leer, modificar, retener, reordenar o reenviar mensajes \cite{ma2026laasso}.
+    \item \textbf{Servidor ($\mathcal{S}$), el verificador designado:} entidad central que custodia la clave privada $vsk$ de ML-KEM-768, la base de datos de claves públicas de los clientes registrados y el registro de tickets consumidos $\mathcal{L}_{\text{spent}}$ \cite{yang2025multiserver, ma2026laasso}.
 \end{enumerate}
 
 \paragraph{Modelo de Amenazas}
 
-El modelo de seguridad asume un adversario cuántico activo $\mathcal{A}$ que controla completamente el canal de comunicación entre $\mathcal{C}$, $\mathcal{T}$ y $\mathcal{S}$ \cite{lombardi2022postquantum, ma2026laasso}. Específicamente, se consideran los siguientes escenarios de ataque \cite{lai2025leaky, ma2026laasso}:
+El adversario controla la terminal y el canal: ve y manipula todos los mensajes. Puede usar un computador cuántico, por lo que las primitivas deben resistir ataques cuánticos. Se supone que el servidor sigue el protocolo y protege $vsk$, que el dispositivo del cliente protege $(\mathbf{s}, \mathbf{e})$ y que los relojes del servidor son confiables. Los ataques de canal lateral sobre el dispositivo y la denegación de servicio quedan fuera del alcance.
+
+\paragraph{Propiedades}
+
+Con esas hipótesis, el protocolo ofrece las siguientes propiedades, cuyos enunciados precisos y supuestos están en la Sección~\ref{sec:pqlite-seguridad}:
+\begin{itemize}
+    \item \textbf{Correctitud:} toda prueba honesta es aceptada.
+    \item \textbf{Conocimiento cero:} la prueba es una NIZK con conocimiento cero estadístico en el modelo de oráculo aleatorio programable, también frente al servidor, que la descifra.
+    \item \textbf{Resistencia a la suplantación:} la prueba es un argumento de conocimiento para una relación relajada; suplantar a un cliente exige resolver instancias de Module-LWE y de SelfTargetMSIS con los parámetros de la capa de prueba.
+    \item \textbf{Verificador designado y no vinculabilidad frente a la terminal:} solo $\mathcal{S}$ puede leer la prueba y el identificador del cliente; la terminal solo ve mensajes cifrados de longitud fija.
+    \item \textbf{Frescura:} cada prueba sirve para un único reto y dentro de una ventana de tiempo.
+    \item \textbf{Acuerdo de clave ligado a la autenticación:} la clave de sesión se acuerda con el cliente que se autenticó, y la terminal no puede sustituir las cuotas del intercambio.
+\end{itemize}
+El protocolo no ofrece denegabilidad (Sección~\ref{sec:denegabilidad}) y su implementación no es de tiempo constante.
+
+\paragraph{Notación del Protocolo}
+Además de la notación general de la Sección~\ref{sec:notacion}, el protocolo usa los símbolos de la Tabla~\ref{tab:pqlite_notacion}. Cuando las dos capas usan objetos análogos, los de la capa de prueba llevan un apóstrofo (por ejemplo, $q$ y $q'$).
+
+\begin{table}[H]
+\centering
+\caption{Símbolos propios de ML-ZKAuth.}
+\label{tab:pqlite_notacion}
+\small
+\begin{tabularx}{\textwidth}{lY}
+\toprule
+\textbf{Símbolo} & \textbf{Significado} \\
+\midrule
+$\mathcal{C}$, $\mathcal{T}$, $\mathcal{S}$ & Cliente (probador), terminal intermedia y servidor (verificador designado). \\
+$q$, $k$, $\eta$, $\mathbf{A}$ & Módulo, rango, parámetro de ruido y matriz pública de la capa de transporte. \\
+$q'$, $k'$, $\eta'$, $\mathbf{A}'$ & Módulo, rango, parámetro de ruido y matriz pública de la capa de prueba. \\
+$\rho$ & Semilla pública de la que se expanden $\mathbf{A}$ y $\mathbf{A}'$. \\
+$\mathbf{s}$, $\mathbf{e}$, $\mathbf{t}$, $\mathsf{id}_{\mathcal{C}}$ & Secreto, error, clave pública e identificador del cliente. \\
+$\mathbf{y}$, $\mathbf{w}$, $\mathbf{w}_1$, $\mathbf{z}$ & Máscara, compromiso, bits altos del compromiso y respuesta de la prueba. \\
+$vpk$, $vsk$ & Claves pública y privada de ML-KEM-768 del servidor. \\
+$K_{\text{tok}}$, $K_{\text{resp}}$ & Clave encapsulada en el token y clave derivada de ella para cifrar la respuesta del servidor. \\
+$\mathbf{b}_{\mathcal{C}}$, $\mathbf{b}_{\mathcal{S}}$, $\theta_{\mathcal{C}}$, $\theta_{\mathcal{S}}$, $\mathbf{v}$ & Cuotas del acuerdo de clave, valores ruidosos de cada lado y pista de reconciliación. \\
+$K_{\text{ses}}$ & Clave de sesión de 256 bits. \\
+$\mathsf{H}$ & SHA3-256 sobre la codificación inequívoca de sus argumentos, con una etiqueta de dominio para cada uso. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Justificación de las Decisiones de Diseño}
+\label{sec:pqlite-diseno}
+
+Esta sección reúne las decisiones de diseño del protocolo y las relaciona con los conceptos del marco teórico que las justifican.
+
+\paragraph{Tipo de Prueba}
+El cliente solo necesita demostrar que conoce la clave secreta asociada a su clave pública. Para esa relación no hacen falta marcos generales como LNP o LAASSO, que demuestran relaciones más ricas con pruebas de unos 14~KB o tokens de unos 62~KB \cite{lyubashevsky2022lattice, ma2026laasso}: basta la plantilla de Fiat--Shamir con abortos (Sección~\ref{sec:sintesis-zkp}). Por eso el protocolo usa un argumento no interactivo de conocimiento cero de ese tipo, en la forma comprimida de Dilithium (Secciones~\ref{sec:fs-comprimido}, \ref{sec:highbits} y \ref{sec:sampleinball}). La prueba consiste en una respuesta $\mathbf{z}$ y una semilla $\tilde{c}$ de 32 bytes, sin compromisos ni pruebas auxiliares, y con los parámetros elegidos el token cifrado completo ocupa 3\,524 bytes (Sección~\ref{sec:pqlite-token}).
+
+\paragraph{Forma Comprimida: el Compromiso No Se Envía}
+En la forma comprimida de Fiat--Shamir, la prueba no incluye el compromiso (Sección~\ref{sec:fs-comprimido}). En este protocolo no es solo una cuestión de tamaño: como la clave es de tipo LWE, $\mathbf{t} = \mathbf{A}'\mathbf{s} + \mathbf{e}$, un verificador que recibiera $\mathbf{w}$ podría recuperar $c\,\mathbf{e}$ y, con él, la clave completa. No enviar el compromiso es necesario para el conocimiento cero (Sección~\ref{sec:pqlite-sin-w}).
+
+\paragraph{Garantías de la Prueba}
+Con esa plantilla, la prueba es una NIZK con conocimiento cero estadístico en el modelo de oráculo aleatorio programable, también frente al verificador designado, y un argumento de conocimiento para una relación relajada (Sección~\ref{sec:rebobinado}), cuya resistencia a la suplantación se reduce a Module-LWE y a SelfTargetMSIS. Su seguridad frente a adversarios cuánticos se apoya en los análisis publicados de la plantilla en el QROM \cite{liu2019revisiting, kiltz2018concrete, devevey2023detailed, barbosa2023fixing}. Los enunciados exactos están en la Sección~\ref{sec:pqlite-seguridad}.
+
+\paragraph{Ocultación del Token con KEM-DEM}
+Para que la terminal sea un canal ciego, que no pueda leer la prueba ni el identificador del cliente, el protocolo adopta la ocultación de tokens de LAASSO (Sección~\ref{sec:kem-dem}) \cite{ma2026laasso}. A diferencia de LAASSO, que cifra con Kyber una clave elegida por el probador, usa ML-KEM tal como está estandarizado en FIPS~203: el encapsulamiento genera la clave, de modo que el token sigue el paradigma KEM-DEM, con AES-256-GCM como cifrado autenticado \cite{nist2024fips203, cramer2003design}. Los parámetros son los de ML-KEM-768, cuyo rango $k = 3$ es el que fijaba el manuscrito original del protocolo. El contenido exacto del token se describe en la Sección~\ref{sec:pqlite-token}.
+
+\paragraph{Frescura con Tickets Emitidos por el Verificador}
+Siguiendo el mecanismo de tickets de LAASSO (Sección~\ref{sec:frescura}), cada prueba se liga a un ticket de un solo uso y a una marca de tiempo. A diferencia de LAASSO, donde un emisor de credenciales asigna los tickets, aquí el ticket lo emite el propio servidor verificador como reto de la sesión, de modo que una sola entidad emite los tickets y lleva el registro de consumo (Secciones~\ref{sec:pqlite-elementos} y \ref{sec:pqlite-flujo}).
+
+\paragraph{Privacidad Buscada}
+La no vinculabilidad (Sección~\ref{sec:no-vinculabilidad}) se busca frente a terceros y frente a la terminal, no frente al servidor, que identifica al cliente por diseño. Se apoya en dos elementos: cada prueba usa una máscara nueva, uniforme en una caja, y la respuesta aceptada tiene una distribución que no depende de $\mathbf{s}$ (Sección~\ref{sec:pqlite-mascara}); y cada token se cifra con una clave nueva, obtenida por encapsulamiento, con el identificador del cliente dentro de la parte cifrada (Sección~\ref{sec:pqlite-token}). El protocolo no busca denegabilidad: una vez descifrada, su prueba es una prueba no interactiva que cualquiera puede verificar con la clave pública del cliente y el reto de la sesión, es decir, es transferible, y el servidor podría mostrarla a un tercero como evidencia de que el cliente participó (Sección~\ref{sec:denegabilidad}).
+
+\paragraph{Acuerdo de Clave con Reconciliación sin Duplicación}
+El acuerdo de clave aplica las funciones de Peikert directamente sobre $q = 3329$, sin la duplicación aleatoria (Sección~\ref{sec:peikert}). En consecuencia, la concordancia está garantizada para errores de hasta 415, y no hasta $q/8$, y cada bit de la clave tiene un sesgo de $832/1665$ frente a $1/2$ cuando la pista vale 0. La Sección~\ref{sec:pqlite-clave} acota la probabilidad de que el error supere 415.
+
+\paragraph{Implementación sin Tiempo Constante}
+El prototipo, escrito en Python con NumPy, no es de tiempo constante: no aprovecha las propiedades de la CBD descritas en la Sección~\ref{sec:cbd}, y el número de intentos del probador se refleja en su tiempo de ejecución, aunque su distribución no dependa de la clave (Sección~\ref{sec:pqlite-limitaciones}).
+
+\subsubsection{Arquitectura de Módulo Dual}
+\label{sec:modulo-dual}
+
+El manuscrito original del protocolo trabajaba sobre un único módulo, $q = 3329$, el de ML-KEM. La prueba de Fiat--Shamir con abortos no es practicable sobre ese módulo (Sección~\ref{sec:eleccion-modulo}): aun con los parámetros más favorables del manuscrito ($n = 768$, $\beta = 46$), la condición de los bits bajos se cumpliría con probabilidad
+\begin{equation}
+\left(\frac{2(832-46)-1}{1664}\right)^{768} \approx 6.6 \cdot 10^{-20},
+\end{equation}
+y con los parámetros actuales ($n = k'd = 1024$, $\beta = 138$), con una probabilidad del orden de $10^{-81}$: la prueba no terminaría nunca. Por eso los autores separaron el protocolo en dos capas con el mismo grado y módulos distintos:
+\begin{equation}
+\mathcal{R}_{q'} = \mathbb{Z}_{q'}[x]/\langle x^{256} + 1 \rangle \quad (q' = 8\,380\,417) \qquad \text{y} \qquad \mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^{256} + 1 \rangle \quad (q = 3329).
+\end{equation}
+La prueba usa $q' = 2^{23} - 2^{13} + 1$, el primo de ML-DSA estandarizado en FIPS~204 \cite{nist2024fips204, bai2021dilithium}, que admite los pasos de redondeo de Dilithium, una máscara ancha y la NTT completa ($q' \equiv 1 \pmod{512}$; Sección~\ref{sec:ntt}). El cifrado del token y el acuerdo de clave conservan $q = 3329$, el módulo de ML-KEM estandarizado en FIPS~203 \cite{nist2024fips203}, con el que los textos cifrados son compactos.
+
+El módulo grande tiene un costo para la clave de identidad, porque con un ruido fijo un módulo mayor debilita LWE (Sección~\ref{sec:eleccion-modulo}): con el ruido $\mathrm{CBD}(2)$ de ML-KEM, una clave Module-LWE de rango 4 sobre $q'$ alcanza solo $2^{114.9}$ en el modelo Core-SVP, y con $\mathrm{CBD}(6)$ alcanza $2^{128.2}$ (Tabla~\ref{tab:pqlite_busqueda}). Por eso la capa de prueba usa su propio parámetro de ruido, $\eta' = 6$ ($\sigma = \sqrt{3}$, coeficientes en $\{-6, \dots, 6\}$, con el valor $0$ como el más probable, de probabilidad $\binom{12}{6}/4096 \approx 0.226$; Sección~\ref{sec:cbd}), mientras que la capa de transporte conserva el $\eta = 2$ de ML-KEM.
+
+\subsection{Elementos del Protocolo: Identificador, Ticket y Marca de Tiempo}
+\label{sec:pqlite-elementos}
+
+Antes de describir los mensajes conviene definir los valores que intervienen en ellos.
 
 \begin{itemize}
-    \item \textbf{Intercepción en Terminales Comprometidas:} El adversario $\mathcal{A}$ puede controlar la terminal intermedia $\mathcal{T}$ o instalar componentes maliciosos para capturar todo el tráfico transmitido por la red \cite{ma2026laasso}.
-    \item \textbf{Consultas Semi-Adaptativas de Fuga (Leaky LWE):} El adversario $\mathcal{A}$ puede seleccionar matrices de desafío $\mathbf{L}$ o inyectar perturbaciones ruidosas para intentar medir componentes lineales de la clave secreta $\mathbf{s}$ a lo largo de múltiples transacciones \cite{lai2025leaky}.
-    \item \textbf{Ataques Geométricos de Reducción de Bases (BKZ):} El adversario $\mathcal{A}$ dispone de algoritmos cuánticos de cribado (\textit{quantum sieving}) para intentar resolver el problema del vector más corto (SVP) sobre la base del retículo generado por $(\mathbf{A}, \mathbf{t})$ \cite{badiezadegan2026complexity, mukil2026implementing}.
+    \item \textbf{Identificador del cliente.} Es el resumen de su clave pública, $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$, de 32 bytes. El servidor indexa su base de datos por $\mathsf{id}_{\mathcal{C}}$ y el cliente lo guarda junto a su clave secreta, de modo que no necesita almacenar $\mathbf{t}$ completo (Sección~\ref{sec:pqlite-setup}). Solo viaja cifrado dentro del token.
+    \item \textbf{Ticket.} Es un valor aleatorio de 256 bits, $\mathsf{tk} \xleftarrow{\$} \{0,1\}^{256}$, que el servidor emite para un único intento de autenticación. Sirve para que la prueba no pueda reutilizarse: la prueba se calcula sobre $\mathsf{tk}$ y el servidor anota cada ticket recibido en $\mathcal{L}_{\text{spent}}$ (Sección~\ref{sec:frescura}).
+    \item \textbf{Marca de tiempo.} Es el instante de emisión del ticket según el reloj del servidor, $\nu$, expresado en milisegundos de tiempo Unix. El servidor solo acepta un token dentro de la ventana $|\nu_{\text{actual}} - \nu| \le \Delta_\nu$, con $\Delta_\nu = 300$~s. Como la fija el propio servidor, no hace falta sincronizar el reloj del cliente.
+    \item \textbf{Reto.} El par $(\mathsf{tk}, \nu)$ forma el reto de la sesión: es la entrada del verificador que la transformación de Fiat--Shamir incluye en el hash.
 \end{itemize}
 
-\paragraph{Vector de Parámetros Concretos}
+\subsection{Vector de Parámetros y su Obtención}
+\label{sec:pqlite-parametros}
 
-Para certificar el nivel de seguridad NIST Nivel 1 (128 bits de resistencia poscuántica) minimizando la sobrecarga de memoria en el dispositivo cliente, se fijan los parámetros en el anillo $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^d + 1 \rangle$ \cite{yang2025multiserver, ma2026laasso}:
+La Tabla~\ref{tab:pqlite_dual_parameters} reúne los parámetros e indica de dónde sale cada valor. Los de la capa de transporte son los de ML-KEM-768; los de la capa de prueba combinan el módulo y los parámetros de redondeo de ML-DSA-44 con un rango y un ruido elegidos para que la clave de identidad alcance $2^{128}$ en el modelo Core-SVP (Sección~\ref{sec:estimacion}), la misma meta que los demás candidatos de retículos del benchmark.
 
+\begin{table}[H]
+\centering
+\caption{Vector de parámetros de ML-ZKAuth y origen de cada valor.}
+\label{tab:pqlite_dual_parameters}
+\small
+\begin{tabularx}{\textwidth}{llY}
+\toprule
+\textbf{Parámetro} & \textbf{Valor} & \textbf{Cómo se obtiene} \\
+\midrule
+$d$ & $256$ & Grado de ambos anillos. Potencia de 2, de modo que $x^{256}+1$ es un polinomio ciclotómico; es el grado de ML-KEM y ML-DSA. \\
+$q'$ & $8\,380\,417$ & Primo $2^{23} - 2^{13} + 1$ de ML-DSA: cumple $q' \equiv 1 \pmod{512}$ (NTT completa), cabe en 23 bits y $q'-1$ admite los pasos de redondeo de Dilithium (Sección~\ref{sec:modulo-dual}). \\
+$k'$ & $4$ & Rango de la capa de prueba. Junto con $\eta'$, el menor que lleva la clave de identidad a $2^{128}$ en Core-SVP (Tabla~\ref{tab:pqlite_busqueda}); la dimensión $k'd = 1024$ es la de ML-DSA-44. \\
+$\eta'$ & $6$ & Ruido $\mathrm{CBD}(\eta')$ del secreto y del error de identidad. Compensa el módulo grande: con $\eta' = 2$ la clave quedaría en $2^{114.9}$. \\
+$\kappa$ & $23$ & Número de coeficientes $\pm 1$ del desafío: el menor con $|B_\kappa| \ge 2^{128}$ ($|B_{23}| \approx 2^{131.1}$; Sección~\ref{sec:sampleinball}). \\
+$\beta$ & $\eta'\kappa = 138$ & Derivado, no ajustable: cota exacta de $\|c\,\mathbf{s}\|_\infty$ y $\|c\,\mathbf{e}\|_\infty$. \\
+$\gamma_1$ & $2^{17} = 131\,072$ & Anchura de la máscara; valor de ML-DSA-44. \\
+$\gamma_2$ & $(q'-1)/88 = 95\,232$ & Mitad del paso de redondeo $\alpha = 2\gamma_2 = 190\,464$, que divide a $q'-1$ y deja 44 valores de bits altos; valor de ML-DSA-44. \\
+$q$ & $3329$ & Módulo de ML-KEM (FIPS~203). \\
+$k$ & $3$ & Rango de ML-KEM-768 y del acuerdo de clave. \\
+$\eta$ & $2$ & Ruido $\mathrm{CBD}(2)$ de ML-KEM-768 y del acuerdo de clave. \\
+$\Delta_\nu$ & $300$~s & Decisión de ingeniería: tiempo máximo entre la emisión del reto y la verificación del token. \\
+$\mathsf{tk}$ & 256 bits & Colisiones despreciables: a lo sumo $N^2/2^{257}$ entre $N$ tickets. \\
+Cifrado & ML-KEM-768 y AES-256-GCM & Encapsulamiento de clave (IND-CCA2) y cifrado autenticado del contenido del token (Sección~\ref{sec:kem-dem}). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Búsqueda del Rango y del Ruido de la Capa de Prueba}
+
+Con el módulo $q'$ fijado, la dureza de la clave de identidad depende del rango $k'$ y del ruido $\eta'$, y el costo para el probador depende de $\beta = \eta'\kappa$ a través de la probabilidad de aceptar cada intento,
 \begin{equation}
-d = 256, \quad k = 3, \quad q = 3329, \quad \eta = 2
+p_{\text{acep}} = \left(\frac{2(\gamma_1-\beta)-1}{2\gamma_1-1}\right)^{k'd} \cdot \left(\frac{2(\gamma_2-\beta)-1}{2\gamma_2}\right)^{k'd},
+\label{eq:pqlite-aceptacion}
+\end{equation}
+que se justifica en la Sección~\ref{sec:pqlite-mascara}. La Tabla~\ref{tab:pqlite_busqueda} recoge la búsqueda: para cada combinación, la dureza de la clave estimada con el \textit{lattice-estimator} en el modelo Core-SVP y el número medio de intentos $1/p_{\text{acep}}$, con $\gamma_1$ y $\gamma_2$ fijos. La combinación elegida, $k' = 4$ y $\eta' = 6$, es la de menor costo que alcanza $2^{128}$.
+
+\begin{table}[H]
+\centering
+\caption{Búsqueda de $(k', \eta')$ para la clave de identidad ($q' = 8\,380\,417$, $\kappa = 23$, $\gamma_1 = 2^{17}$, $\gamma_2 = 95\,232$).}
+\label{tab:pqlite_busqueda}
+\small
+\begin{tabular}{ccccl}
+\toprule
+$k'$ & $\eta'$ & \textbf{Clave (Core-SVP clásico)} & \textbf{Aceptación por intento} & \textbf{Intentos medios} \\
+\midrule
+3 & 2 & $2^{78.8}$ & 0.525 & 1.9 \\
+4 & 2 & $2^{114.9}$ & 0.423 & 2.4 \\
+4 & 4 & $2^{122.6}$ & 0.180 & 5.6 \\
+4 & 5 & $2^{126.1}$ & 0.118 & 8.5 \\
+\textbf{4} & \textbf{6} & $\mathbf{2^{128.2}}$ & \textbf{0.077} & \textbf{13.1} \\
+4 & 7 & $2^{129.9}$ & 0.050 & 20.0 \\
+4 & 8 & $2^{131.4}$ & 0.033 & 30.6 \\
+5 & 2 & $2^{152.4}$ & 0.341 & 2.9 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Con rango 5 y $\eta' = 2$ la clave quedaría unos 24 bits por encima del resto de candidatos, lo que rompería la comparabilidad del benchmark. También se descartó usar los parámetros de redondeo de ML-DSA-65 ($\gamma_1 = 2^{19}$, $\gamma_2 = (q'-1)/32$): el probador aceptaría cerca del 44\,\% de los intentos, pero la solidez caería a unos $2^{115}$.
+
+\subsection{Configuración del Sistema y Enrolamiento}
+\label{sec:pqlite-setup}
+
+\paragraph{Configuración}
+El servidor ejecuta una única vez:
+\begin{equation}
+\rho \xleftarrow{\$} \{0,1\}^{256}, \qquad (vpk, vsk) \leftarrow \mathsf{ML\text{-}KEM\text{-}768.KeyGen}().
+\end{equation}
+Las matrices públicas se expanden de forma determinista desde $\rho$ con el XOF SHAKE128 (Sección~\ref{sec:xof}):
+\begin{equation}
+\mathbf{A}' = \mathsf{ExpandA}_{q'}\big(\mathsf{H}(\rho)\big) \in \mathcal{R}_{q'}^{k' \times k'}, \qquad
+\mathbf{A} = \mathsf{ExpandA}_{q}(\rho) \in \mathcal{R}_{q}^{k \times k},
+\end{equation}
+donde $\mathsf{ExpandA}$ lee, para cada entrada $(i, j)$, el flujo $\mathsf{SHAKE128}$ de la semilla seguida de $i$ y $j$, lo interpreta en palabras de 23 bits (12 bits para $q$) y descarta las palabras mayores o iguales que el módulo, de modo que los coeficientes son exactamente uniformes. La semilla de $\mathbf{A}'$ se deriva de $\rho$ con una etiqueta propia para que ambas matrices provengan de flujos independientes. Los parámetros públicos del sistema son $(\rho, vpk)$; las matrices no se transmiten ni se almacenan, porque cualquiera puede regenerarlas.
+
+\paragraph{Enrolamiento}
+Cada cliente genera su clave de identidad sobre $\mathcal{R}_{q'}$:
+\begin{equation}
+\mathbf{s}, \mathbf{e} \leftarrow \mathrm{CBD}(\eta')^{k'}, \qquad \mathbf{t} = \mathbf{A}'\mathbf{s} + \mathbf{e} \bmod q', \qquad \mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t}).
+\end{equation}
+La clave pública es $\mathbf{t} \in \mathcal{R}_{q'}^{k'}$ y la privada es $(\mathbf{s}, \mathbf{e}, \mathsf{id}_{\mathcal{C}})$. El servidor registra el par $(\mathsf{id}_{\mathcal{C}}, \mathbf{t})$. El cliente necesita $\mathbf{e}$, y no solo $\mathbf{s}$, porque la segunda condición de rechazo de la prueba usa $c\,\mathbf{e}$ (Sección~\ref{sec:pqlite-prueba}). Que $\mathbf{t}$ no revele $\mathbf{s}$ es exactamente el supuesto de Module-LWE.
+
+\paragraph{Por Qué Siempre Se Usa el Mismo $\mathbf{e}$}
+El par $(\mathbf{s}, \mathbf{e})$ se muestrea una sola vez, en el enrolamiento, y forma la clave de largo plazo del cliente: $\mathbf{t} = \mathbf{A}'\mathbf{s} + \mathbf{e}$ es la clave pública que el servidor registró, y cambiar $\mathbf{e}$ cambiaría $\mathbf{t}$, con lo que las pruebas dejarían de verificar frente a la clave registrada. Un error nuevo en cada sesión exigiría registrar una clave nueva cada vez. Lo que cambia en cada prueba, y en cada intento dentro de una prueba, es la máscara $\mathbf{y}$ y, con ella, el compromiso y el desafío $c$.
+
+El error $\mathbf{e}$ tampoco interviene en lo que se envía: no aparece en la respuesta $\mathbf{z} = \mathbf{y} + c\,\mathbf{s}$ ni viaja en el token. El cliente lo usa solo para calcular $\mathbf{w} - c\,\mathbf{e}$ en la segunda condición de rechazo, es decir, para prever el valor que reconstruirá el verificador, $\mathbf{A}'\mathbf{z} - c\,\mathbf{t} = \mathbf{w} - c\,\mathbf{e}$, y descartar los intentos en los que sus bits altos cambiarían (Sección~\ref{sec:pqlite-verificacion}). Reutilizar $\mathbf{e}$ no filtra información: los intentos rechazados no se publican, y la decisión de aceptar uno depende solo de $\mathbf{z}$ y de $\mathbf{A}'\mathbf{z} - c\,\mathbf{t}$, que cualquiera puede calcular a partir de datos públicos; por eso el simulador de la Sección~\ref{sec:pqlite-seguridad} reproduce las pruebas sin conocer $\mathbf{e}$.
+
+\paragraph{Por Qué el Cliente No Almacena $\mathbf{t}$}
+El cliente solo necesita $\mathbf{t}$ dentro del hash del desafío, y allí $\mathbf{t}$ entra a través de su resumen $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$ (Sección~\ref{sec:pqlite-prueba}, paso 3). Guardar $\mathsf{id}_{\mathcal{C}}$, de 32 bytes, en lugar de $\mathbf{t}$, de 2\,944 bytes, ahorra memoria en el dispositivo, y si alguna vez hiciera falta $\mathbf{t}$ podría recalcularse como $\mathbf{A}'\mathbf{s} + \mathbf{e}$. Por la misma razón el cliente no guarda $\mathbf{A}'$, de $k'^2 d = 4\,096$ coeficientes de 23 bits (11\,776 bytes), sino que la regenera desde $\rho$ cada vez que la necesita. Quien sí almacena $\mathbf{t}$ es el servidor, que lo necesita para verificar: calcula $\mathbf{A}'\mathbf{z} - c\,\mathbf{t}$ y comprueba que $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$ (Sección~\ref{sec:pqlite-verificacion}).
+
+\subsection{Flujo de Mensajes}
+\label{sec:pqlite-flujo}
+
+Una autenticación consta de los mensajes de la Tabla~\ref{tab:pqlite_mensajes}. Todos pasan por la terminal $\mathcal{T}$, que se limita a retransmitirlos.
+
+\begin{table}[H]
+\centering
+\caption{Mensajes de una autenticación con acuerdo de clave.}
+\label{tab:pqlite_mensajes}
+\small
+\begin{tabularx}{\textwidth}{clYl}
+\toprule
+\textbf{Paso} & \textbf{Sentido} & \textbf{Contenido} & \textbf{Tamaño} \\
+\midrule
+1 & $\mathcal{C} \to \mathcal{S}$ & \textsf{Hello}: solicitud de autenticación, sin identificador del cliente. & --- \\
+2 & $\mathcal{S} \to \mathcal{C}$ & Reto $(\mathsf{tk}, \nu)$. & 40 bytes \\
+3 & $\mathcal{C} \to \mathcal{S}$ & Token $\text{tok} = (\text{tok}_1, \text{tok}_2)$ con la prueba, el reto, $\mathsf{id}_{\mathcal{C}}$ y, si se pide clave de sesión, la cuota $\mathbf{b}_{\mathcal{C}}$. & 3\,524 bytes (4\,676 con $\mathbf{b}_{\mathcal{C}}$) \\
+4 & $\mathcal{S} \to \mathcal{C}$ & Resultado y, si se pidió clave de sesión, la respuesta cifrada con $(\mathbf{b}_{\mathcal{S}}, \mathbf{v})$. & 1\,212 bytes \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{enumerate}
+    \item \textbf{Hello.} El cliente pide iniciar una autenticación. El mensaje no lleva identificador: así la terminal no sabe quién se autentica.
+    \item \textbf{Reto.} El servidor genera $\mathsf{tk}$ con un generador aleatorio criptográfico, toma $\nu$ de su reloj y envía $(\mathsf{tk}, \nu)$. Solo aceptará después un token que responda a un reto que él emitió.
+    \item \textbf{Prueba y token.} El cliente calcula la prueba sobre $(\mathsf{tk}, \nu)$ (Sección~\ref{sec:pqlite-prueba}) y la oculta en el token (Sección~\ref{sec:pqlite-token}). Si quiere acordar una clave de sesión, genera además su cuota efímera $\mathbf{b}_{\mathcal{C}}$ y la incluye dentro del token.
+    \item \textbf{Verificación y respuesta.} El servidor descifra, verifica (Sección~\ref{sec:pqlite-verificacion}) y comunica el resultado. Si la autenticación fue aceptada y el token traía $\mathbf{b}_{\mathcal{C}}$, responde con su cuota $\mathbf{b}_{\mathcal{S}}$ y la pista de reconciliación $\mathbf{v}$, cifradas con una clave derivada de la del token, y ambos obtienen $K_{\text{ses}}$ (Sección~\ref{sec:pqlite-clave}).
+\end{enumerate}
+
+\subsection{Generación de la Prueba}
+\label{sec:pqlite-prueba}
+
+El cliente demuestra que conoce $(\mathbf{s}, \mathbf{e})$ tales que $\mathbf{t} = \mathbf{A}'\mathbf{s} + \mathbf{e}$, con la plantilla de Dilithium sin compresión de la clave pública (Figura~1 de su especificación) \cite{ducas2018crystals, bai2021dilithium}, en la que el reto $(\mathsf{tk}, \nu)$ ocupa el lugar del mensaje firmado. Cada intento consta de los pasos siguientes; si un intento se rechaza, el cliente lo descarta por completo y empieza otro con una máscara nueva.
+
+\paragraph{Paso 1: Máscara Uniforme en una Caja}
+\label{sec:pqlite-mascara}
+El cliente toma
+\begin{equation}
+\mathbf{y} \xleftarrow{\$} S_{\gamma_1 - 1}^{k'},
+\end{equation}
+es decir, cada uno de los $k'd = 1024$ coeficientes de $\mathbf{y}$ se elige de forma independiente y uniforme en $\{-(\gamma_1-1), \dots, \gamma_1-1\}$: $2\gamma_1 - 1 = 262\,143$ valores equiprobables, con media $0$ y desviación estándar $\sqrt{\gamma_1(\gamma_1-1)/3} \approx 75\,674$. Esta distribución, $S_{\gamma_1-1}$ en la notación de la Sección~\ref{sec:notacion}, no es Gaussiana ni binomial: es plana sobre una ``caja''. Se elige así porque es la que hace que la respuesta aceptada sea exactamente uniforme e independiente del secreto, con una sola comparación de normas, como muestra el lema siguiente.
+
+\textit{El problema.} La respuesta será $\mathbf{z} = \mathbf{y} + c\,\mathbf{s}$. Cada coeficiente de $\mathbf{z}$ es un coeficiente de la máscara, uniforme en la caja, desplazado por el coeficiente correspondiente $\varsigma$ de $c\,\mathbf{s}$, que depende del secreto y cumple $|\varsigma| \le \beta$. El conjunto de valores posibles de $z$ es, por tanto, la caja corrida $\varsigma$ posiciones, y los valores cercanos a sus bordes delatan hacia dónde se corrió. La solución es publicar $z$ solo cuando cae en la zona central, que la caja cubre sea cual sea el desplazamiento.
+
+\textit{Un ejemplo pequeño.} Tómense $\gamma_1 = 5$ y $\beta = 2$: la máscara $y$ es uniforme en $\{-4, \dots, 4\}$, 9 valores con probabilidad $1/9$ cada uno, y solo se publica $z$ si $|z| < \gamma_1 - \beta = 3$. La Tabla~\ref{tab:pqlite_rechazo_ejemplo} compara dos secretos distintos, con $\varsigma = 2$ y $\varsigma = -1$.
+
+\begin{table}[H]
+\centering
+\caption{Distribución de $z = y + \varsigma$ con $y$ uniforme en $\{-4, \dots, 4\}$ para dos desplazamientos.}
+\label{tab:pqlite_rechazo_ejemplo}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccccccccc}
+\toprule
+$z$ & $-5$ & $-4$ & $-3$ & $-2$ & $-1$ & $0$ & $1$ & $2$ & $3$ & $4$ & $5$ & $6$ \\
+\midrule
+$\Pr[z]$ con $\varsigma = 2$ & 0 & 0 & 0 & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ \\
+$\Pr[z]$ con $\varsigma = -1$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & $\tfrac{1}{9}$ & 0 & 0 & 0 \\
+¿Se publica? & no & no & no & sí & sí & sí & sí & sí & no & no & no & no \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Sin rechazo, ver $z = 6$ revelaría que $\varsigma = 2$, porque con $\varsigma = -1$ ese valor es imposible, y ver $z = -5$ revelaría que $\varsigma = -1$. En cambio, las columnas de $-2$ a $2$ tienen la misma probabilidad, $1/9$, en las dos filas, y lo mismo ocurre para cualquier $\varsigma$ entre $-2$ y $2$: es la zona que la caja cubre en todas sus posiciones posibles. El probador publica solo si $z$ cae en ella y, si no, repite con otra máscara. Un intento se publica con probabilidad $5/9$ en ambos casos, y, dado que se publica, cada uno de los 5 valores aparece con probabilidad $(1/9)/(5/9) = 1/5$: el valor publicado no dice nada de $\varsigma$. Es como recortar los bordes de una foto movida: lo que queda no muestra hacia dónde se movió la cámara. Con los parámetros reales ocurre lo mismo a mayor escala: cada coeficiente de la máscara toma $2\gamma_1 - 1 = 262\,143$ valores, de los que $2(\gamma_1 - \beta) - 1 = 261\,867$ caen en la zona central.
+
+El lema siguiente enuncia esta idea en general.
+
+\textbf{Lema (rechazo con máscara uniforme).} Sea $\mathbf{z} = \mathbf{y} + c\,\mathbf{s}$ con $\|c\,\mathbf{s}\|_\infty \le \beta$ y $\mathbf{y} \xleftarrow{\$} S_{\gamma_1-1}^{k'}$. Condicionado a $\|\mathbf{z}\|_\infty < \gamma_1 - \beta$, el vector $\mathbf{z}$ es uniforme en $S_{\gamma_1-\beta-1}^{k'}$, sea cual sea $c\,\mathbf{s}$:
+\begin{equation}
+\Pr\left[\mathbf{z} = \mathbf{z}_0 \;\middle|\; \|\mathbf{z}\|_\infty < \gamma_1 - \beta\right] = \frac{1}{(2(\gamma_1-\beta)-1)^{k'd}} \qquad \text{para todo } \mathbf{z}_0 \in S_{\gamma_1-\beta-1}^{k'}.
+\end{equation}
+\textit{Demostración.} Coeficiente a coeficiente, como en el ejemplo: sea $\varsigma$ el coeficiente correspondiente de $c\,\mathbf{s}$, con $|\varsigma| \le \beta$. Para cada $z_0$ con $|z_0| < \gamma_1 - \beta$ existe exactamente un valor de la máscara que lo produce, $y = z_0 - \varsigma$, y ese valor está dentro de la caja porque $|z_0 - \varsigma| \le \gamma_1 - \beta - 1 + \beta = \gamma_1 - 1$. Así, cada $z_0$ del conjunto aceptado tiene probabilidad $1/(2\gamma_1-1)$, independiente de $\varsigma$; como hay $2(\gamma_1-\beta)-1$ valores aceptados y los coeficientes son independientes, se obtiene la fórmula. $\square$
+
+En palabras: la condición $\|\mathbf{z}\|_\infty < \gamma_1 - \beta$ recorta, en cada coeficiente, una franja de anchura $\beta$ en cada borde de la caja, justo lo que el secreto puede desplazarla; lo que queda tiene la misma distribución con cualquier secreto. En consecuencia, la condición sobre la respuesta se cumple con probabilidad $p_z = \left(\frac{2(\gamma_1-\beta)-1}{2\gamma_1-1}\right)^{k'd} \approx \mathrm{e}^{-k'd\beta/\gamma_1}$, que tampoco depende de la clave. Por eso la máscara debe ser mucho más ancha que $\beta$: cada coeficiente se acepta con probabilidad $261\,867/262\,143 \approx 0.99895$, pero hay $k'd = 1024$ coeficientes, y $(261\,867/262\,143)^{1024} \approx 0.340$. Con una máscara más estrecha, la franja recortada sería una fracción mayor de la caja y casi ningún intento se publicaría.
+
+\paragraph{Paso 2: Compromiso y Bits Altos}
+El cliente calcula el compromiso y sus bits altos respecto del paso $\alpha = 2\gamma_2$ (Sección~\ref{sec:highbits}):
+\begin{equation}
+\mathbf{w} = \mathbf{A}'\mathbf{y} \bmod q', \qquad \mathbf{w}_1 = \mathsf{HighBits}_{q'}(\mathbf{w}, 2\gamma_2) \in \{0, \dots, 43\}^{k'd}.
 \end{equation}
 
-La dimensión espacial total del retículo resultante es $N = k \times d = 3 \times 256 = 768$ \cite{yang2025multiserver}. El módulo primo de 16 bits $q = 3329$ admite la Transformada de Teoría de Números (NTT), permitiendo multiplicaciones polinomiales eficientes de complejidad $\mathcal{O}(d \log d)$ \cite{yang2025multiserver, mukil2026implementing}. La distribución de error corresponde a una Distribución Binomial Centrada $\text{CBD}(\eta=2)$ con desviación estándar $\sigma = 1$, implementada en tiempo constante $\mathcal{O}(1)$ \cite{yang2025multiserver}.
-
-\paragraph{Secuencia Lógica Temporal del Protocolo}
-
-El flujo operativo del protocolo PQLite-Auth v2 se ejecuta en cuatro fases secuenciales estrictas, coordinadas entre el dispositivo cliente $\mathcal{C}$ y el servidor verificador $\mathcal{S}$ a través del canal ciego $\mathcal{T}$ \cite{yang2025multiserver, ma2026laasso}:
-
-\begin{enumerate}
-    \item \textbf{Fase 1 (Generación de Pruebas y Ocultación en $\mathcal{C}$):} El cliente $\mathcal{C}$ muestrea ruido fresco, genera el argumento NIZKAoK determinista mediante Fiat-Shamir con Abortos, verifica la cota de norma, encapsula una clave simétrica efímera con Kyber ($vpk$) y encripta el token mediante AES-256 \cite{ma2026laasso}.
-    \item \textbf{Fase 2 (Transmisión Ciega en $\mathcal{T}$):} La terminal $\mathcal{T}$ recibe el paquete cifrado $\text{tok} = (\text{tok}_1, \text{tok}_2)$ y lo reenvía al servidor $\mathcal{S}$ sin realizar procesamiento local \cite{ma2026laasso}.
-    \item \textbf{Fase 3 (Verificación y Desencapsulamiento en $\mathcal{S}$):} El servidor $\mathcal{S}$ descifra el token usando su clave privada $vsk$, valida la frescura del ticket contra el \textit{Spent Log}, reconstruye el desafío y verifica las ecuaciones modulares y la cota de norma del retículo \cite{yang2025multiserver, ma2026laasso}.
-    \item \textbf{Fase 4 (Acuerdo de Clave de Sesión $\mathcal{S} \to \mathcal{C}$):} Aprobada la autenticación, $\mathcal{S}$ deriva una pista de redondeo cruzado en 4 cuadrantes $\mathbf{v} \in \{0,1\}^{256}$ y la transmite a $\mathcal{C}$, permitiendo a ambas partes concordar la misma clave simétrica de 256 bits mediante reconciliación de Peikert \cite{yang2025multiserver}.
-\end{enumerate}
-
-\subsubsection{Generación del Argumento NIZKAoK y Ocultación de Tokens (Token Hiding)}
-
-\paragraph{Fundamentación del Argumento NIZKAoK mediante Fiat-Shamir con Abortos}
-
-La primera etapa operacional del protocolo PQLite-Auth v2 se ejecuta íntegramente dentro del entorno físicamente protegido del dispositivo cliente ($\mathcal{C}$) \cite{mukil2026implementing, ma2026laasso}. Su propósito es construir un argumento no interactivo de conocimiento de conocimiento cero (\textit{Non-Interactive Zero-Knowledge Argument of Knowledge} - NIZKAoK) que pruebe la posesión del secreto vectorial $\mathbf{s} \in \mathcal{R}_q^k$ asociado al compromiso público $\mathbf{t} = \mathbf{A}\mathbf{s} + \mathbf{e} \pmod q$, sin revelar componente alguna de $\mathbf{s}$ \cite{lyubashevsky2009fiat, ma2026laasso}.
-
-Para evitar que la respuesta lineal filtre la geometría de la clave secreta, el protocolo adapta el paradigma de \textit{Fiat-Shamir con Abortos} (\textit{Fiat-Shamir with aborts}) ideado por Lyubashevsky \cite{lyubashevsky2009fiat, lyubashevsky2012lattice}. La generación de la prueba se ejecuta mediante la siguiente secuencia de operaciones algebraicas en el anillo $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^{256} + 1 \rangle$ \cite{yang2025multiserver, ma2026laasso}:
-
-\begin{enumerate}
-    \item \textbf{Muestreo de Ruido Fresco de Enmascaramiento:} El dispositivo $\mathcal{C}$ genera de forma estocástica e independiente un vector de ruido fresco de enmascaramiento $\mathbf{y} \in \mathcal{R}_q^k$, cuyos coeficientes se muestrean a partir de la Distribución Binomial Centrada $\text{CBD}(\eta=2)$ con desviación estándar $\sigma = 1$ \cite{yang2025multiserver}:
-    \begin{equation}
-    \mathbf{y} \leftarrow \text{CBD}(\eta=2)^k \in \mathcal{R}_q^k
-    \end{equation}
-    
-    \item \textbf{Cálculo del Compromiso Providencial ($\mathbf{w}$):} Utilizando la matriz pública global del sistema $\mathbf{A} \in \mathcal{R}_q^{k \times k}$, el cliente evalúa el vector de compromiso preliminar $\mathbf{w}$ \cite{yang2025multiserver, ma2026laasso}:
-    \begin{equation}
-    \mathbf{w} = \mathbf{A}\mathbf{y} \pmod q \in \mathcal{R}_q^k
-    \end{equation}
-    
-    \item \textbf{Derivación Determinista del Desafío ($\mathbf{L}$):} Mediante la heurística de Fiat-Shamir en el modelo de oráculo aleatorio (\textit{Random Oracle Model} - ROM), $\mathcal{C}$ calcula la matriz de desafío no interactivo $\mathbf{L} \in \mathcal{R}_q^{k \times k}$ aplicando la función de hash criptográfica $H: \{0,1\}^* \to \mathcal{R}_q^{k \times k}$ sobre la concatenación del compromiso público $\mathbf{t}$, el compromiso fresco $\mathbf{w}$, un identificador único de ticket de un solo uso $\mathbf{t}_{\text{ticket}} \in \{0,1\}^{256}$ y la marca de tiempo de la sesión $\nu$ \cite{fiat1986how, lyubashevsky2009fiat, ma2026laasso}:
-    \begin{equation}
-    \mathbf{L} = H(\mathbf{A}, \mathbf{t}, \mathbf{w}, \mathbf{t}_{\text{ticket}}, \nu) \in \mathcal{R}_q^{k \times k}
-    \end{equation}
-    La inclusión explícita del par $(\mathbf{t}_{\text{ticket}}, \nu)$ en el oráculo garantiza la vinculación criptográfica entre la prueba NIZKAoK y la sesión temporal activa, previniendo la maleabilidad de los transcripts \cite{ma2026laasso}.
-    
-    \item \textbf{Evaluación del Vector de Respuesta ($\mathbf{z}$):} El cliente evalúa la combinación lineal modular entre la clave secreta $\mathbf{s}$, la matriz de desafío $\mathbf{L}$ y el ruido fresco $\mathbf{y}$ \cite{yang2025multiserver, ma2026laasso}:
-    \begin{equation}
-    \mathbf{z} = \mathbf{s}\mathbf{L} + \mathbf{y} \pmod q \in \mathcal{R}_q^k
-    \end{equation}
-    
-    \item \textbf{Filtro de Muestreo de Rechazo (\textit{Rejection Sampling}):} Para romper la correlación estadística entre la respuesta $\mathbf{z}$ y el secreto $\mathbf{s}$, el algoritmo aplica una verificación de cota de norma infinita $\|\cdot\|_\infty$ \cite{lyubashevsky2009fiat, lyubashevsky2012lattice, lai2025leaky}:
-    \begin{equation}
-    \|\mathbf{z}\|_\infty \le \beta_z
-    \end{equation}
-    donde $\beta_z$ es el umbral de aceptación ajustado según el parámetro de escalamiento de Leaky LWE \cite{lai2025leaky}. Si $\|\mathbf{z}\|_\infty > \beta_z$, el procesador de $\mathcal{C}$ \textit{aborta la iteración de inmediato}, descarta la tupla $(\mathbf{y}, \mathbf{z}, \mathbf{w})$ y retorna de forma recursiva al Paso 1 para muestrear un nuevo vector de ruido $\mathbf{y}'$ \cite{lyubashevsky2009fiat, ma2026laasso}. Si $\|\mathbf{z}\|_\infty \le \beta_z$, la prueba NIZKAoK $(\mathbf{z}, \mathbf{w})$ se declara válida y el dispositivo avanza hacia la fase de enmascaramiento \cite{lyubashevsky2009fiat, ma2026laasso}.
-\end{enumerate}
-
-\paragraph{Mecanismo de Ocultación de Tokens (\textit{Token Hiding}) con Kyber y AES}
-
-Aprobada la verificación de norma del argumento NIZKAoK en $\mathcal{C}$, el protocolo inicia el procedimiento de enmascaramiento para garantizar la propiedad de \textit{verificador designado} (\textit{designated verifier}) e impedir que la terminal intermedia $\mathcal{T}$ o cualquier observador del canal inspeccione el contenido de la prueba \cite{ma2026laasso}. El mecanismo de \textit{Token Hiding} implementa una envoltura de cifrado híbrido poscuántico estructurada en los siguientes pasos \cite{ma2026laasso}:
-
-\begin{enumerate}
-    \item \textbf{Generación de la Clave Simétrica Efímera ($K$):} El cliente $\mathcal{C}$ muestrea un bloque de aleatoriedad uniforme de 256 bits para instanciar una clave simétrica de un solo uso \cite{ma2026laasso}:
-    \begin{equation}
-    K \stackrel{\$}{\leftarrow} \{0, 1\}^{256}
-    \end{equation}
-    
-    \item \textbf{Encapsulamiento Asimétrico Poscuántico ($\text{tok}_1$):} Utilizando la clave pública de descifrado del servidor central $vpk$ (correspondiente al estándar ML-KEM / Kyber-768 almacenado en la memoria inalterable de $\mathcal{C}$), el dispositivo encapsula la clave efímera $K$ \cite{ma2026laasso, mukil2026implementing}:
-    \begin{equation}
-    \text{tok}_1 = \text{Kyber.Enc}(vpk, K)
-    \end{equation}
-    El resultado $\text{tok}_1$ constituye un texto cifrado asimétrico sobre Module-LWE que solo puede ser revertido por la clave privada $vsk$ del servidor $\mathcal{S}$ \cite{ma2026laasso}.
-    
-    \item \textbf{Cifrado Simétrico AES-256 del Carga Útil ($\text{tok}_2$):} Utilizando la clave efímera $K$ bajo el algoritmo simétrico AES en modo GCM/CBC con vector de inicialización fresco, $\mathcal{C}$ encripta la tupla que contiene la prueba NIZKAoK, el compromiso $\mathbf{w}$, el identificador de ticket $\mathbf{t}_{\text{ticket}}$ y el sello de tiempo $\nu$ \cite{ma2026laasso}:
-    \begin{equation}
-    \text{tok}_2 = \text{AES.Enc}\left(K, \{\mathbf{z}, \mathbf{w}, \mathbf{t}_{\text{ticket}}, \nu\}\right)
-    \end{equation}
-    
-    \item \textbf{Construcción y Emisión del Token Compuesto ($\text{tok}$):} El dispositivo cliente concatena las dos estructuras cifradas para conformar el token de autenticación final \cite{ma2026laasso}:
-    \begin{equation}
-    \text{tok} = (\text{tok}_1, \text{tok}_2)
-    \end{equation}
-    El paquete $\text{tok}$ se transmite desde $\mathcal{C}$ hacia la terminal intermedia $\mathcal{T}$ mediante la interfaz de comunicación \cite{ma2026laasso}.
-\end{enumerate}
-
-\paragraph{Transferencia Ciega en la Terminal Intermedia ($\mathcal{T}$)}
-
-La terminal intermedia $\mathcal{T}$ recibe el paquete compuesto $\text{tok} = (\text{tok}_1, \text{tok}_2)$. Debido a la propiedad de indecodificabilidad bajo ataques de texto claro elegido (IND-CPA) de Kyber y AES-256, el bloque $\text{tok}$ resulta computacionalmente indistinguible de una secuencia de ruido aleatorio uniforme sobre el alfabeto binario para la terminal $\mathcal{T}$ \cite{ma2026laasso}:
-
+\paragraph{Paso 3: Desafío}
+Con la transformación de Fiat--Shamir, el desafío depende de la matriz, de la clave pública, de los bits altos del compromiso y del reto:
 \begin{equation}
-\text{tok} \approx_c \mathcal{U}\left(\{0, 1\}^{|\text{tok}|}\right)
+\tilde{c} = \mathsf{H}\big(\mathbf{A}', \mathbf{t}, \mathbf{w}_1, \mathsf{tk}, \nu\big) \in \{0,1\}^{256}, \qquad c = \mathsf{SampleInBall}(\tilde{c}) \in B_{23}.
+\end{equation}
+$\mathsf{H}$ es SHA3-256 sobre la codificación inequívoca de sus argumentos, precedida de una etiqueta de dominio y de un resumen de los parámetros; $\mathbf{A}'$ y $\mathbf{t}$ entran a través de sus resúmenes de 32 bytes, $\mathsf{H}(\mathbf{A}')$ y $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$, lo que en el modelo de oráculo aleatorio es equivalente y permite que el cliente no almacene $\mathbf{t}$. $\mathsf{SampleInBall}$ expande $\tilde{c}$ con SHAKE256 en un polinomio con exactamente 23 coeficientes iguales a $\pm 1$ (Sección~\ref{sec:sampleinball}).
+
+\paragraph{Paso 4: Respuesta y Doble Rechazo}
+La respuesta se calcula sobre los enteros:
+\begin{equation}
+\mathbf{z} = \mathbf{y} + c\,\mathbf{s}.
+\end{equation}
+El intento se publica solo si cumple las dos condiciones
+\begin{equation}
+\|\mathbf{z}\|_\infty < \gamma_1 - \beta = 130\,934
+\qquad \text{y} \qquad
+\big\|\mathsf{LowBits}_{q'}(\mathbf{w} - c\,\mathbf{e}, 2\gamma_2)\big\|_\infty < \gamma_2 - \beta = 95\,094 .
+\label{eq:pqlite-rechazo}
+\end{equation}
+La primera es la del lema anterior y garantiza que $\mathbf{z}$ no revela $\mathbf{s}$. La segunda garantiza que el verificador, que reconstruirá $\mathbf{w} - c\,\mathbf{e}$ en lugar de $\mathbf{w}$, obtenga los mismos bits altos (Sección~\ref{sec:pqlite-verificacion}). Si los bits bajos de $\mathbf{w} - c\,\mathbf{e}$ se tratan como uniformes, la segunda condición se cumple con probabilidad $p_{\text{low}} = \left(\frac{2(\gamma_2-\beta)-1}{2\gamma_2}\right)^{k'd} \approx 0.225$, y un intento se publica con probabilidad
+\begin{equation}
+p_{\text{acep}} = p_z\, p_{\text{low}} \approx 0.340 \times 0.225 \approx 0.077 .
+\end{equation}
+El número de intentos sigue una distribución geométrica de media $1/p_{\text{acep}} \approx 13.1$. La implementación devuelve un error si no obtiene una prueba en 1\,000 intentos, lo que ocurre con probabilidad $(1 - p_{\text{acep}})^{1000} \approx 2.4 \cdot 10^{-35}$. La prueba es el par
+\begin{equation}
+\pi = (\mathbf{z}, \tilde{c}).
 \end{equation}
 
-Por consiguiente, la terminal $\mathcal{T}$ no puede descifrar la clave $K$, no puede extraer el vector de respuesta $\mathbf{z}$, ni puede verificar si las ecuaciones del retículo son válidas \cite{ma2026laasso}. Operacionalmente, $\mathcal{T}$ actúa como un \textit{canal ciego de retransmisión} (\textit{blind relay}), limitándose a empaquetar $\text{tok}$ dentro de la trama de red y reenviarlo hacia la dirección de red del servidor verificador designado $\mathcal{S}$ \cite{ma2026laasso}.
+\paragraph{Por Qué los Coeficientes del Desafío Valen $\pm 1$ y Por Qué Son 23}
+Con coeficientes en $\{-1, 0, 1\}$, cada coeficiente de $c\,\mathbf{s}$ es una suma con signo de 23 coeficientes de $\mathbf{s}$, de modo que $\|c\,\mathbf{s}\|_\infty \le \kappa\eta' = 138 = \beta$, y lo mismo vale para $c\,\mathbf{e}$; esa cota es la que ocultan las dos condiciones de rechazo. Con coeficientes mayores, $\beta$ crecería y $p_{\text{acep}}$ caería. El número de coeficientes no nulos fija el tamaño del espacio de desafíos: $|B_{22}| \approx 2^{126.7}$ no alcanza $2^{128}$ y $|B_{23}| \approx 2^{131.1}$ sí, y no conviene más porque cada coeficiente adicional aumenta $\beta$ (Sección~\ref{sec:sampleinball}).
 
-\subsubsection{Descifrado Centralizado, Verificación de Norma y Prevención de Replay}
-
-\paragraph{Recepción y Descifrado Híbrido en el Servidor Designado}
-
-El servidor central verificador ($\mathcal{S}$) es la única entidad que posee la clave privada de descifrado $vsk$ correspondiente al par de claves asimétricas de Kyber-768 instauradas en el sistema \cite{ma2026laasso, mukil2026implementing}. Al recibir el paquete cifrado $\text{tok} = (\text{tok}_1, \text{tok}_2)$ retransmitido por la terminal intermedia $\mathcal{T}$, el servidor $\mathcal{S}$ inicia el procedimiento de desencapsulamiento y descifrado simétrico estructurado en las siguientes etapas \cite{ma2026laasso}:
-
-\begin{enumerate}
-    \item \textbf{Recuperación de la Clave Simétrica Efímera ($K$):} Mediante el algoritmo de descifrado asimétrico de Kyber, el servidor $\mathcal{S}$ aplica su clave privada $vsk$ sobre la primera componente del token $\text{tok}_1$ \cite{ma2026laasso}:
-    \begin{equation}
-    K = \text{Kyber.Dec}(vsk, \text{tok}_1)
-    \end{equation}
-    La seguridad de la construcción garantiza que, salvo que el atacante resuelva una instancia dura del problema MLWE sobre la clave pública $vpk$, la clave simétrica de 256 bits $K$ se recupera de forma íntegra y sin alteraciones \cite{ma2026laasso}.
-
-    \item \textbf{Descifrado Simétrico de la Carga Útil ($\text{payload}$):} Utilizando la clave efímera $K$ recuperada, $\mathcal{S}$ ejecuta el descifrado AES-256 sobre la segunda componente $\text{tok}_2$ para extraer la carga útil en texto claro \cite{ma2026laasso}:
-    \begin{equation}
-    \{\mathbf{z}, \mathbf{w}, \mathbf{t}_{\text{ticket}}, \nu\} = \text{AES.Dec}(K, \text{tok}_2)
-    \end{equation}
-    donde $\mathbf{z} \in \mathcal{R}_q^k$ es la respuesta NIZKAoK, $\mathbf{w} \in \mathcal{R}_q^k$ es el vector de compromiso fresco, $\mathbf{t}_{\text{ticket}} \in \{0,1\}^{256}$ es el identificador único de ticket y $\nu$ es el sello temporal de la sesión \cite{yang2025multiserver, ma2026laasso}.
-\end{enumerate}
-
-\paragraph{Verificación Anti-Replay y Frescura Temporal mediante Registro de Tickets}
-
-Antes de procesar la prueba sobre el retículo, el servidor $\mathcal{S}$ valida las propiedades de no maleabilidad y frescura temporal del paquete para neutralizar ataques de repetición (\textit{replay attacks}) e intercepción diferida \cite{lombardi2022postquantum, ma2026laasso}. Esta validación se rige por las siguientes condiciones de control \cite{ma2026laasso}:
-
-\begin{enumerate}
-    \item \textbf{Control de Ventana Temporal ($\Delta t$):} El servidor compara la marca de tiempo $\nu$ contenida en la carga útil descifrada contra el reloj interno del servidor $\nu_{\text{actual}}$. Si $|\nu_{\text{actual}} - \nu| > \Delta t$ (donde $\Delta t$ define la ventana de tolerancia máxima del sistema), el servidor aborta la transacción por caducidad temporal \cite{ma2026laasso}.
-    
-    \item \textbf{Verificación en el Registro de Consumo (\textit{Spent Log}):} El servidor $\mathcal{S}$ realiza una consulta de búsqueda determinista sobre el registro centralizado de tickets consumidos $\mathcal{L}_{\text{spent}}$ empleando el identificador $\mathbf{t}_{\text{ticket}}$ \cite{ma2026laasso}:
-    \begin{equation}
-    \mathbf{t}_{\text{ticket}} \stackrel{?}{\in} \mathcal{L}_{\text{spent}}
-    \end{equation}
-    Si $\mathbf{t}_{\text{ticket}} \in \mathcal{L}_{\text{spent}}$, se detecta un intento de reutilización de un token capturado previamente en el canal público, por lo que el servidor $\mathcal{S}$ rechaza de inmediato la solicitud y emite una alerta de seguridad \cite{ma2026laasso}. Si $\mathbf{t}_{\text{ticket}} \notin \mathcal{L}_{\text{spent}}$, el servidor añade formalmente el identificador al registro ($\mathcal{L}_{\text{spent}} \leftarrow \mathcal{L}_{\text{spent}} \cup \{\mathbf{t}_{\text{ticket}}\}$) para invalidar cualquier retransmisión futura de dicho ticket \cite{ma2026laasso}.
-\end{enumerate}
-
-\paragraph{Reconstrucción del Desafío y Verificación Geométrica sobre el Retículo}
-
-Superado el filtro anti-replay, el servidor $\mathcal{S}$ valida la solidez matemática de la prueba NIZKAoK evaluando la relación algebraica entre la respuesta $\mathbf{z}$, el compromiso público $\mathbf{t} = \mathbf{A}\mathbf{s} + \mathbf{e} \pmod q$ almacenado en la base de datos central y el compromiso providencial $\mathbf{w}$ \cite{yang2025multiserver, ma2026laasso}:
-
-\begin{enumerate}
-    \item \textbf{Reconstrucción del Desafío Fiat-Shamir ($\mathbf{L}$):} El servidor $\mathcal{S}$ invoca la función de hash oráculo $H$ sobre los elementos recuperados para reconstruir exactamente la matriz de desafío no interactiva $\mathbf{L} \in \mathcal{R}_q^{k \times k}$ \cite{fiat1986how, lyubashevsky2009fiat, ma2026laasso}:
-    \begin{equation}
-    \mathbf{L} = H(\mathbf{A}, \mathbf{t}, \mathbf{w}, \mathbf{t}_{\text{ticket}}, \nu) \in \mathcal{R}_q^{k \times k}
-    \end{equation}
-
-    \item \textbf{Comprobación Estricta de Cota de Norma ($\|\mathbf{z}\|_\infty$):} El servidor verifica que el vector de respuesta $\mathbf{z}$ cumpla la restricción de norma máxima \cite{lyubashevsky2009fiat, lai2025leaky}:
-    \begin{equation}
-    \|\mathbf{z}\|_\infty \stackrel{?}{\le} \beta_z
-    \end{equation}
-    Si $\|\mathbf{z}\|_\infty > \beta_z$, el servidor rechaza la prueba de inmediato. Esta verificación garantiza que un adversario no pueda presentar vectores de respuesta arbitrariamente largos para satisfacer la ecuación modular sin conocer el secreto corto $\mathbf{s}$ \cite{lyubashevsky2009fiat, lai2025leaky}.
-
-    \item \textbf{Evaluación de Consistencia Algebraica sobre MLWE:} El servidor $\mathcal{S}$ recupera la matriz pública $\mathbf{A}$ y el compromiso $\mathbf{t}$ asociados a la identidad del cliente, y evalúa el producto matricial modular \cite{yang2025multiserver, ma2026laasso}:
-    \begin{equation}
-    \mathbf{A}\mathbf{z} - \mathbf{t}\mathbf{L} \pmod q \in \mathcal{R}_q^k
-    \end{equation}
-    Sustituyendo las definiciones del probador ($\mathbf{z} = \mathbf{s}\mathbf{L} + \mathbf{y}$ y $\mathbf{t} = \mathbf{A}\mathbf{s} + \mathbf{e}$), se observa la cancelación del término de secreto principal \cite{yang2025multiserver}:
-    \begin{align}
-    \mathbf{A}\mathbf{z} - \mathbf{t}\mathbf{L} &\equiv \mathbf{A}(\mathbf{s}\mathbf{L} + \mathbf{y}) - (\mathbf{A}\mathbf{s} + \mathbf{e})\mathbf{L} \pmod q \nonumber \\
-    &\equiv \mathbf{A}\mathbf{s}\mathbf{L} + \mathbf{A}\mathbf{y} - \mathbf{A}\mathbf{s}\mathbf{L} - \mathbf{e}\mathbf{L} \pmod q \nonumber \\
-    &\equiv \mathbf{A}\mathbf{y} - \mathbf{e}\mathbf{L} \pmod q \nonumber \\
-    &\equiv \mathbf{w} - \mathbf{e}\mathbf{L} \pmod q
-    \end{align}
-
-    \item \textbf{Validación de Cota de Ruido Residual:} Dado que $\mathbf{w} = \mathbf{A}\mathbf{y} \pmod q$, la diferencia entre la expresión calculada $\mathbf{A}\mathbf{z} - \mathbf{t}\mathbf{L}$ y el compromiso providencial $\mathbf{w}$ viene dada por el término de error perturbador $-\mathbf{e}\mathbf{L}$ \cite{yang2025multiserver}. El servidor verifica que la norma del error residual esté acotada por la cota teórica $\beta_e$ \cite{yang2025multiserver, lai2025leaky}:
-    \begin{equation}
-    \|\mathbf{A}\mathbf{z} - \mathbf{t}\mathbf{L} - \mathbf{w}\|_\infty \stackrel{?}{\le} \beta_e
-    \end{equation}
-    Si la diferencia respeta la cota $\beta_e$, el servidor declara la prueba NIZKAoK como \textit{válida} y confirma la autenticación del dispositivo cliente $\mathcal{C}$, habilitando la ejecución de la fase final de acuerdo de clave de sesión \cite{yang2025multiserver, ma2026laasso}.
-\end{enumerate}
-
-\subsubsection{Acuerdo de Clave de Sesión mediante Reconciliación en Cuatro Cuadrantes}
-
-\paragraph{Fundamentación de la Reconciliación de Errores sobre Retículos}
-
-Tras la verificación exitosa de la prueba NIZKAoK y la confirmación de autenticidad en el servidor ($\mathcal{S}$), el protocolo culmina con la generación de una clave simétrica de sesión compartida $K_{\text{sesión}} \in \{0, 1\}^{256}$ entre el dispositivo cliente ($\mathcal{C}$) y el servidor ($\mathcal{S}$) \cite{yang2025multiserver, rewal2023quantumsafe}. Para evitar el uso de mecanismos adicionales de cifrado asimétrico que incrementarían la sobrecarga computacional del dispositivo embebido, ambas partes derivan la clave mediante la técnica de \textit{reconciliación de errores de Peikert} sobre el anillo $\mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^{256} + 1 \rangle$ con módulo $q = 3329$ \cite{yang2025multiserver, rewal2023quantumsafe}.
-
-En un protocolo sobre retículos, las multiplicaciones algebraicas independientes ejecutadas por el cliente y el servidor producen dos vectores continuos ruidosos $\mathbf{w}_A, \mathbf{w}_B \in \mathcal{R}_q$ que difieren únicamente por una pequeña perturbación de error LWE acumulado \cite{yang2025multiserver, rewal2023quantumsafe}:
-
+\paragraph{Por Qué No Se Transmite el Compromiso}
+\label{sec:pqlite-sin-w}
+El token contiene $(\mathbf{z}, \tilde{c})$, no $\mathbf{w}$, y no es una decisión de tamaño sino de seguridad. Si el verificador recibiera $\mathbf{w}$, podría calcular
 \begin{equation}
-\mathbf{w}_A \approx \mathbf{w}_B \pmod q \implies \mathbf{w}_A = \mathbf{w}_B + \mathbf{e}_{\text{rec}} \pmod q
+\mathbf{w} - \left(\mathbf{A}'\mathbf{z} - c\,\mathbf{t}\right) = \mathbf{w} - \left(\mathbf{w} - c\,\mathbf{e}\right) = c\,\mathbf{e}.
+\end{equation}
+Como $c$ es invertible en $\mathcal{R}_{q'}$ con alta probabilidad, obtendría $\mathbf{e} = c^{-1}(c\,\mathbf{e})$ y luego $\mathbf{s}$ a partir de $\mathbf{A}'\mathbf{s} = \mathbf{t} - \mathbf{e}$, porque $\mathbf{A}'$ es cuadrada e invertible con alta probabilidad: un solo token entregaría la clave completa. En la forma comprimida, el compromiso solo interviene a través de sus bits altos, dentro del hash, y el verificador los reconstruye sin conocer $\mathbf{w}$.
+
+\subsection{Ocultación del Token}
+\label{sec:pqlite-token}
+
+El cliente oculta la prueba con el paradigma KEM-DEM de la Sección~\ref{sec:kem-dem}:
+\begin{align}
+(K_{\text{tok}}, \text{tok}_1) &\leftarrow \mathsf{ML\text{-}KEM\text{-}768.Encaps}(vpk), \\
+\text{tok}_2 &= \mathsf{AES\text{-}256\text{-}GCM.Enc}_{K_{\text{tok}}}\big(\mathbf{z}, \tilde{c}, \mathsf{tk}, \nu, \mathsf{id}_{\mathcal{C}} \,[\,, \mathbf{b}_{\mathcal{C}}\,]\big), \\
+\text{tok} &= (\text{tok}_1, \text{tok}_2).
+\end{align}
+$\text{tok}_2$ lleva un \textit{nonce} aleatorio de 96 bits y, como datos asociados, un resumen de los parámetros del sistema, de modo que un token no se acepta bajo otra configuración. La cuota $\mathbf{b}_{\mathcal{C}}$ solo se incluye si el cliente pide una clave de sesión (Sección~\ref{sec:pqlite-clave}); al viajar dentro de $\text{tok}_2$ queda cifrada y autenticada junto con la prueba.
+
+Con los parámetros de la Tabla~\ref{tab:pqlite_dual_parameters}, $\text{tok}_1$ mide 1\,088 bytes y $\text{tok}_2$ contiene $\mathbf{z}$ (2\,304 bytes, a 18 bits por coeficiente), $\tilde{c}$, $\mathsf{tk}$ e $\mathsf{id}_{\mathcal{C}}$ (32 bytes cada uno), $\nu$ (8 bytes), el \textit{nonce} (12 bytes) y la etiqueta (16 bytes): en total, 3\,524 bytes, o 4\,676 con los 1\,152 bytes de $\mathbf{b}_{\mathcal{C}}$. Todos los tokens del mismo tipo miden lo mismo. La terminal no puede descifrar $K_{\text{tok}}$ ni leer o modificar el contenido sin que falle la etiqueta, pero el token no es indistinguible de una cadena aleatoria: revela su longitud y, con ella, si lleva cuota de acuerdo de clave.
+
+\subsection{Verificación en el Servidor}
+\label{sec:pqlite-verificacion}
+
+Al recibir un token, el servidor ejecuta, en este orden:
+\begin{enumerate}
+    \item \textbf{Descifrado.} $K_{\text{tok}} = \mathsf{ML\text{-}KEM\text{-}768.Decaps}(vsk, \text{tok}_1)$ y descifrado de $\text{tok}_2$. Si la etiqueta de GCM no es válida, o si el contenido no es una respuesta bien formada, rechaza.
+    \item \textbf{Identidad y reto.} Busca $\mathbf{t}$ por $\mathsf{id}_{\mathcal{C}}$ y comprueba que $(\mathsf{tk}, \nu)$ sea un reto que él emitió. En el prototipo, que sigue el contrato común de los seis candidatos, quien invoca la verificación entrega $\mathbf{t}$ y el reto emitido, y el verificador exige que $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$ y que el reto coincida con el que trae el token. Un fallo en este paso rechaza el token sin consumir el ticket.
+    \item \textbf{Ventana temporal.} Rechaza si $|\nu_{\text{actual}} - \nu| > \Delta_\nu$.
+    \item \textbf{Registro de consumo.} Si $\mathsf{tk} \in \mathcal{L}_{\text{spent}}$, rechaza; si no, añade $\mathsf{tk}$ a $\mathcal{L}_{\text{spent}}$ de forma atómica. El ticket se consume antes de comprobar la prueba, de modo que un token inválido también lo gasta. Los tickets anteriores a la ventana pueden borrarse del registro, porque la propia ventana ya los rechaza; por eso el registro tiene un tamaño acotado (ver el párrafo siguiente).
+    \item \textbf{Cota de la respuesta.} Rechaza si $\|\mathbf{z}\|_\infty \ge \gamma_1 - \beta$.
+    \item \textbf{Bits altos y hash.} Calcula $c = \mathsf{SampleInBall}(\tilde{c})$, reconstruye
+    \begin{equation}
+    \mathbf{w}_1' = \mathsf{HighBits}_{q'}\left(\mathbf{A}'\mathbf{z} - c\,\mathbf{t} \bmod q', \, 2\gamma_2\right)
+    \end{equation}
+    y acepta si y solo si $\mathsf{H}(\mathbf{A}', \mathbf{t}, \mathbf{w}_1', \mathsf{tk}, \nu) = \tilde{c}$.
+\end{enumerate}
+
+\paragraph{Tamaño del Registro de Tickets Consumidos}
+\label{sec:pqlite-registro}
+El registro $\mathcal{L}_{\text{spent}}$ no crece con el historial del sistema. Un ticket solo debe recordarse mientras su marca de tiempo esté dentro de la ventana: después, el paso 3 ya rechaza cualquier token que lo use, y el ticket puede borrarse. En cada momento, el registro contiene a lo sumo los tickets emitidos en los últimos $\Delta_\nu$ segundos. Si hay $N$ clientes y cada uno hace en promedio $f$ intentos de autenticación por hora (los intentos con una prueba inválida también cuentan, porque también consumen su ticket), el número de entradas es del orden de
+\begin{equation}
+E \approx \frac{N \cdot f \cdot \Delta_\nu}{3600} = \frac{N \cdot f}{12} \qquad \text{con } \Delta_\nu = 300~\text{s}.
+\end{equation}
+Cada entrada guarda el ticket (32 bytes) y su marca de tiempo (8 bytes): 40 bytes de datos. El prototipo guarda el registro en un diccionario de Python y borra los tickets vencidos cada vez que el registro alcanza 8\,192 entradas; con la estructura incluida, cada entrada ocupa entre 130 y 155 bytes, según una medición con \texttt{tracemalloc} en CPython~3.13 sobre registros de $10^4$ a $10^6$ entradas. La Tabla~\ref{tab:pqlite_registro} aplica la fórmula a escenarios con números realistas, con unos 150 bytes por entrada para el prototipo; como este solo borra al llegar a 8\,192 entradas, puede guardar además hasta ese número de tickets vencidos, alrededor de 1.2~MB. En el escenario de pico, cada uno de un millón de clientes se autentica una vez dentro de los mismos cinco minutos.
+
+\begin{table}[H]
+\centering
+\caption{Tamaño del registro de tickets consumidos con $\Delta_\nu = 300$~s.}
+\label{tab:pqlite_registro}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Escenario} & \textbf{Clientes $N$} & \textbf{Intentos/hora} & \textbf{Entradas $E$} & \textbf{Datos (40 B)} & \textbf{Prototipo} \\
+\midrule
+Pequeño & 10\,000 & 2 & 1\,667 & 67~KB & 0.25~MB \\
+Mediano & 1\,000\,000 & 2 & 166\,667 & 6.7~MB & 25~MB \\
+Grande & 10\,000\,000 & 2 & 1\,666\,667 & 67~MB & 250~MB \\
+Pico (todos en 5~min) & 1\,000\,000 & --- & 1\,000\,000 & 40~MB & 150~MB \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Incluso en el pico, el registro es mucho menor que la base de claves públicas que el servidor guarda de todos modos: con un millón de clientes, sus claves $\mathbf{t}$, de 2\,944 bytes cada una, ocupan unos 2.9~GB. El tamaño depende de la tasa de autenticaciones y de $\Delta_\nu$, no del tiempo que lleve funcionando el sistema: reducir la ventana a la mitad reduce el registro a la mitad. Si un despliegue guarda además los tickets emitidos que aún no se usaron, para comprobar en el paso 2 que el reto es suyo, esa tabla obedece la misma cota y a lo sumo duplica el total. Un atacante que pidiera tickets en masa con mensajes \textsf{Hello} inflaría esa segunda tabla; es una forma de denegación de servicio, fuera del modelo de amenazas, que se mitiga limitando la emisión de tickets por conexión.
+
+\paragraph{Por Qué una Prueba Honesta Siempre Verifica}
+Sustituyendo $\mathbf{z} = \mathbf{y} + c\,\mathbf{s}$ y $\mathbf{t} = \mathbf{A}'\mathbf{s} + \mathbf{e}$:
+\begin{align}
+\mathbf{A}'\mathbf{z} - c\,\mathbf{t} &\equiv \mathbf{A}'(\mathbf{y} + c\,\mathbf{s}) - c\,(\mathbf{A}'\mathbf{s} + \mathbf{e}) \pmod{q'} \nonumber \\
+&\equiv \mathbf{A}'\mathbf{y} + c\,\mathbf{A}'\mathbf{s} - c\,\mathbf{A}'\mathbf{s} - c\,\mathbf{e} \pmod{q'} \nonumber \\
+&\equiv \mathbf{w} - c\,\mathbf{e} \pmod{q'},
+\end{align}
+donde se usó que $c$ es un escalar del anillo y conmuta con $\mathbf{A}'$. El verificador obtiene así el compromiso desplazado por $-c\,\mathbf{e}$, con $\|c\,\mathbf{e}\|_\infty \le \beta$. La segunda condición de rechazo de \eqref{eq:pqlite-rechazo} es exactamente la hipótesis del lema de la Ecuación~\eqref{eq:lema-highbits}, aplicado a $\mathbf{r} = \mathbf{w} - c\,\mathbf{e}$ y $\boldsymbol{\delta} = c\,\mathbf{e}$:
+\begin{equation}
+\mathbf{w}_1' = \mathsf{HighBits}_{q'}(\mathbf{w} - c\,\mathbf{e}, 2\gamma_2) = \mathsf{HighBits}_{q'}(\mathbf{w}, 2\gamma_2) = \mathbf{w}_1,
+\end{equation}
+de modo que el verificador calcula el hash sobre la misma entrada que el probador y obtiene $\tilde{c}$. La primera condición garantiza la cota del paso 5. Toda prueba publicada verifica: no hay error de completitud, y la única aleatoriedad está en cuántos intentos necesita el probador. Sin la segunda condición, una prueba honesta fallaría cada vez que $c\,\mathbf{e}$ cambiara algún bit alto: con los parámetros actuales, en torno al 3.5\,\% de las veces (estimación $1 - (1 - \mathbb{E}|(c\mathbf{e})_i| / (2\gamma_2))^{k'd}$, con $\mathbb{E}|(c\mathbf{e})_i| \approx 6.6$).
+
+\subsection{Acuerdo de Clave de Sesión}
+\label{sec:pqlite-clave}
+
+Tras una autenticación aceptada, cliente y servidor pueden acordar una clave de sesión $K_{\text{ses}}$ de 256 bits sobre la capa de transporte, con cuotas efímeras de Module-LWE y la reconciliación de Peikert (Sección~\ref{sec:peikert}) \cite{yang2025multiserver, peikert2014lattice}.
+
+\paragraph{Cuotas Efímeras}
+El cliente, al generar el token, y el servidor, al responder, muestrean secretos y errores nuevos de $\mathrm{CBD}(\eta)$ con $\eta = 2$:
+\begin{equation}
+\mathbf{b}_{\mathcal{C}} = \mathbf{A}\mathbf{s}_{\mathcal{C}} + \mathbf{e}_{\mathcal{C}} \bmod q, \qquad
+\mathbf{b}_{\mathcal{S}} = \mathbf{A}^{T}\mathbf{s}_{\mathcal{S}} + \mathbf{e}_{\mathcal{S}} \bmod q,
+\qquad \mathbf{s}_{\mathcal{C}}, \mathbf{e}_{\mathcal{C}}, \mathbf{s}_{\mathcal{S}}, \mathbf{e}_{\mathcal{S}} \leftarrow \mathrm{CBD}(2)^{k}.
+\end{equation}
+Las cuotas se generan nuevas en cada sesión; reutilizarlas permitiría ataques de fuga de señal sobre la reconciliación.
+
+\paragraph{Valores Ruidosos de Cada Lado}
+El cliente calcula $\theta_{\mathcal{C}}$ con la cuota del servidor y su propio secreto; el servidor calcula $\theta_{\mathcal{S}}$ con la cuota del cliente, su secreto y un error adicional $e^{\ast}_{\mathcal{S}} \leftarrow \mathrm{CBD}(2)$, un único polinomio:
+\begin{equation}
+\theta_{\mathcal{C}} = \mathbf{b}_{\mathcal{S}}^{T}\mathbf{s}_{\mathcal{C}} \bmod q, \qquad
+\theta_{\mathcal{S}} = \mathbf{b}_{\mathcal{C}}^{T}\mathbf{s}_{\mathcal{S}} + e^{\ast}_{\mathcal{S}} \bmod q .
 \end{equation}
 
-Debido a la naturaleza discreta de los bordes de redondeo modular en $\mathbb{Z}_q$, la aplicación de una función de redondeo directa sobre coeficientes cercanos a las fronteras provocaría discrepancias de bits si el error $\mathbf{e}_{\text{rec}}$ hace saltar el valor al cuadrante contiguo \cite{yang2025multiserver}. La reconciliación en cuatro cuadrantes resuelve el problema de la frontera mediante la emisión de un vector de señal auxiliar $\mathbf{v} \in \{0,1\}^{256}$ transmitido en texto claro, el cual orienta al cliente para corregir la zona de decisión sin filtrar información sobre los bits de la clave final \cite{yang2025multiserver}.
+\paragraph{Por Qué $\theta_{\mathcal{C}}$ y $\theta_{\mathcal{S}}$ Casi Coinciden}
+Desarrollando cada lado:
+\begin{align}
+\theta_{\mathcal{C}} &= (\mathbf{A}^{T}\mathbf{s}_{\mathcal{S}} + \mathbf{e}_{\mathcal{S}})^{T}\mathbf{s}_{\mathcal{C}}
+= \mathbf{s}_{\mathcal{S}}^{T}\mathbf{A}\,\mathbf{s}_{\mathcal{C}} + \mathbf{e}_{\mathcal{S}}^{T}\mathbf{s}_{\mathcal{C}}, \\
+\theta_{\mathcal{S}} &= (\mathbf{A}\mathbf{s}_{\mathcal{C}} + \mathbf{e}_{\mathcal{C}})^{T}\mathbf{s}_{\mathcal{S}} + e^{\ast}_{\mathcal{S}}
+= \mathbf{s}_{\mathcal{C}}^{T}\mathbf{A}^{T}\mathbf{s}_{\mathcal{S}} + \mathbf{e}_{\mathcal{C}}^{T}\mathbf{s}_{\mathcal{S}} + e^{\ast}_{\mathcal{S}} .
+\end{align}
+El término $\mathbf{s}_{\mathcal{C}}^{T}\mathbf{A}^{T}\mathbf{s}_{\mathcal{S}}$ es un único elemento de $\mathcal{R}_q$ y, por tanto, igual a su traspuesto, $\mathbf{s}_{\mathcal{S}}^{T}\mathbf{A}\,\mathbf{s}_{\mathcal{C}}$, porque $\mathcal{R}_q$ es conmutativo. Ese término, que es grande y uniforme a la vista de un observador, aparece en ambos lados y se cancela al restar:
+\begin{equation}
+\theta_{\mathcal{C}} - \theta_{\mathcal{S}} = \mathbf{e}_{\mathcal{S}}^{T}\mathbf{s}_{\mathcal{C}} - \mathbf{e}_{\mathcal{C}}^{T}\mathbf{s}_{\mathcal{S}} - e^{\ast}_{\mathcal{S}} \pmod q .
+\end{equation}
+La diferencia solo contiene productos de valores pequeños. Cada coeficiente es la suma de $2kd = 1536$ productos de dos variables $\mathrm{CBD}(2)$ independientes, de varianza 1 cada uno, más un término $\mathrm{CBD}(2)$; su varianza es $1537$ y su desviación estándar $\sigma_{\theta} \approx 39.2$. Calculando su distribución exacta,
+\begin{equation}
+\Pr\big[\,|(\theta_{\mathcal{C}} - \theta_{\mathcal{S}})_i| > 415\,\big] \approx 8.4 \cdot 10^{-26}
+\end{equation}
+por coeficiente, de modo que la probabilidad de que alguno de los 256 bits de la clave difiera es a lo sumo $2.2 \cdot 10^{-23}$. Como referencia, el error supera 150 con probabilidad $1.3 \cdot 10^{-4}$ por coeficiente y 300 con probabilidad $2.4 \cdot 10^{-14}$.
 
-\paragraph{Partición Modular y Funciones de Peikert en $\mathbb{Z}_{3329}$}
+\paragraph{Del Valor Ruidoso a la Clave: los Cuatro Cuadrantes}
+El servidor extrae, coeficiente a coeficiente, el bit de clave y la pista:
+\begin{equation}
+K_{\mathcal{S}}^{(i)} = \left\lfloor \theta_{\mathcal{S}}^{(i)} \right\rceil_{q,2}, \qquad v^{(i)} = \left\langle \theta_{\mathcal{S}}^{(i)} \right\rangle_{q,2}, \qquad i = 0, \dots, 255,
+\end{equation}
+y el cliente reconcilia con su propio valor: $K_{\mathcal{C}}^{(i)} = \mathrm{rec}\big(\theta_{\mathcal{C}}^{(i)}, v^{(i)}\big)$. La pista $v^{(i)}$ indica en cuál de los dos pares de cuadrantes opuestos de la Tabla~\ref{tab:cuadrantes} está $\theta_{\mathcal{S}}^{(i)}$, y la reconciliación elige, dentro de ese par, el cuadrante más cercano a $\theta_{\mathcal{C}}^{(i)}$. Como el error es como mucho 415 salvo con la probabilidad calculada arriba, ambos obtienen el mismo bit (Sección~\ref{sec:peikert}):
+\begin{equation}
+K_{\mathcal{C}} = K_{\mathcal{S}} = K_{\text{ses}} \in \{0, 1\}^{256}.
+\end{equation}
+Por ejemplo, si $\theta_{\mathcal{S}}^{(i)} = 1000$ (cuadrante $Q_1$), el servidor obtiene el bit 1 y envía $v^{(i)} = 1$; el cliente tiene $\theta_{\mathcal{C}}^{(i)} = 1000 + \epsilon$ con $|\epsilon| \le 415$, que no pertenece a $I_1 + E = \{-1248, \dots, 415\}$, y obtiene también 1. Como $q$ es impar y no se usa la duplicación aleatoria de Peikert, el bit de clave tiene un sesgo de $832/1665$ frente a $1/2$ cuando $v^{(i)} = 0$.
 
-El espacio del anillo modular $\mathbb{Z}_q$ con $q = 3329$ se particiona formalmente en cuatro cuadrantes de tamaño aproximado $\lfloor q/4 \rfloor \approx 832$ unidades \cite{yang2025multiserver}:
+\paragraph{Cómo Viajan las Cuotas}
+La cuota del cliente $\mathbf{b}_{\mathcal{C}}$ viaja dentro de $\text{tok}_2$, cifrada y autenticada con $K_{\text{tok}}$ junto con la prueba. Tras aceptar el token, el servidor genera $\mathbf{b}_{\mathcal{S}}$ y $\mathbf{v}$ y los envía cifrados con AES-256-GCM bajo la clave $K_{\text{resp}} = \mathsf{H}(K_{\text{tok}})$, derivada con una etiqueta propia, y con el ticket como dato asociado del cifrado; el cliente, que conoce $K_{\text{tok}}$ porque la generó al encapsular, descifra la respuesta y reconcilia. El servidor responde una sola vez por ticket aceptado.
 
+\subsection{Análisis de Seguridad}
+\label{sec:pqlite-seguridad}
+
+\paragraph{Correctitud}
+Toda prueba honesta verifica con probabilidad 1 (Sección~\ref{sec:pqlite-verificacion}), y las dos partes acuerdan la misma clave de sesión salvo con probabilidad menor que $2.2 \cdot 10^{-23}$ (Sección~\ref{sec:pqlite-clave}).
+
+\paragraph{Conocimiento Cero}
+La prueba es una NIZK en el modelo de oráculo aleatorio programable (Sección~\ref{sec:xof}). Un simulador $\mathsf{Sim}$ que solo conoce $(\mathbf{A}', \mathbf{t}, \mathsf{tk}, \nu)$ produce pruebas con la misma distribución que las reales:
+\begin{enumerate}
+    \item elige $\tilde{c} \xleftarrow{\$} \{0,1\}^{256}$, calcula $c = \mathsf{SampleInBall}(\tilde{c})$ y toma $\mathbf{z} \xleftarrow{\$} S_{\gamma_1-\beta-1}^{k'}$;
+    \item repite el paso anterior si $\|\mathsf{LowBits}_{q'}(\mathbf{A}'\mathbf{z} - c\,\mathbf{t}, 2\gamma_2)\|_\infty \ge \gamma_2 - \beta$;
+    \item programa el oráculo para que $\mathsf{H}\big(\mathbf{A}', \mathbf{t}, \mathsf{HighBits}_{q'}(\mathbf{A}'\mathbf{z} - c\,\mathbf{t}, 2\gamma_2), \mathsf{tk}, \nu\big) = \tilde{c}$ y devuelve $(\mathbf{z}, \tilde{c})$.
+\end{enumerate}
+Las pruebas reales tienen esa distribución: por el lema de la Sección~\ref{sec:pqlite-mascara}, el $\mathbf{z}$ aceptado es uniforme en su caja sea cual sea el secreto, y la segunda condición de rechazo depende solo de $(\mathbf{z}, c, \mathbf{t})$, porque $\mathbf{w} - c\,\mathbf{e} = \mathbf{A}'\mathbf{z} - c\,\mathbf{t}$. Los intentos rechazados nunca se publican, lo que encaja con la noción de conocimiento cero ``sin abortos'' (naHVZK) de Kiltz, Lyubashevsky y Schaffner, en la que el simulador no necesita reproducir los compromisos de los intentos abortados \cite{kiltz2018concrete}. Como el servidor ve exactamente $(\mathbf{z}, \tilde{c})$ tras descifrar, el argumento también lo cubre: el servidor no aprende de una prueba nada que no pudiera haber generado solo.
+
+\textit{Tipo de conocimiento cero.} Las pruebas simuladas y las reales tienen exactamente la misma distribución, salvo en un caso: que el simulador tenga que programar el oráculo en una entrada que ya había sido consultada. Como los bits altos del compromiso tienen una entropía muy alta, ese caso tiene probabilidad despreciable \cite{bai2021dilithium}. Por eso el conocimiento cero de la prueba es \textbf{estadístico} (Sección~\ref{sec:zkp}): no es perfecto, por ese margen despreciable, y tampoco es solo computacional, porque la indistinguibilidad no depende de que ningún problema matemático sea difícil, sino únicamente de que la función hash se comporte como un oráculo aleatorio. Lo que sí es computacional es la confidencialidad del token frente a terceros, que descansa en ML-KEM y AES-GCM (Sección~\ref{sec:pqlite-token}).
+
+\paragraph{Solidez: Relación Relajada y SelfTargetMSIS}
+Si un probador produce dos pruebas aceptadas con los mismos bits altos y desafíos distintos $c \neq c'$, se cumple $\mathbf{A}'\mathbf{z} - c\,\mathbf{t} = \alpha\mathbf{w}_1 + \mathbf{r}_0$ y $\mathbf{A}'\mathbf{z}' - c'\,\mathbf{t} = \alpha\mathbf{w}_1 + \mathbf{r}_0'$ con bits bajos acotados por $\gamma_2$, y al restar:
+\begin{equation}
+\mathbf{A}'(\mathbf{z} - \mathbf{z}') + \mathbf{u} = (c - c')\,\mathbf{t} \pmod{q'}, \qquad
+\|\mathbf{z} - \mathbf{z}'\|_\infty < 2(\gamma_1 - \beta), \quad \|\mathbf{u}\|_\infty \le 2\gamma_2,
+\end{equation}
+con $\mathbf{u} = \mathbf{r}_0' - \mathbf{r}_0$. Es un testigo corto de una relación relajada, no necesariamente $(\mathbf{s}, \mathbf{e})$: la prueba es un argumento de conocimiento para esa relación. Siguiendo el análisis de Dilithium \cite{bai2021dilithium, kiltz2018concrete}, la resistencia a la suplantación se reduce a dos problemas con los parámetros de la capa de prueba:
 \begin{itemize}
-    \item \textbf{Cuadrante 0 ($Q_0$):} $w \in \left[0, \lfloor q/4 \rfloor\right) \implies \text{Bit de Clave } K = 0, \quad \text{Señal } v = 0 \text{ (Par)}$
-    \item \textbf{Cuadrante 1 ($Q_1$):} $w \in \left[\lfloor q/4 \rfloor, \lfloor q/2 \rfloor\right) \implies \text{Bit de Clave } K = 0, \quad \text{Señal } v = 1 \text{ (Impar)}$
-    \item \textbf{Cuadrante 2 ($Q_2$):} $w \in \left[\lfloor q/2 \rfloor, \lfloor 3q/4 \rfloor\right) \implies \text{Bit de Clave } K = 1, \quad \text{Señal } v = 0 \text{ (Par)}$
-    \item \textbf{Cuadrante 3 ($Q_3$):} $w \in \left[\lfloor 3q/4 \rfloor, q\right) \implies \text{Bit de Clave } K = 1, \quad \text{Señal } v = 1 \text{ (Impar)}$
+    \item \textbf{Module-LWE:} que $\mathbf{t} = \mathbf{A}'\mathbf{s} + \mathbf{e}$ sea indistinguible de un vector uniforme.
+    \item \textbf{SelfTargetMSIS:} encontrar un vector de coeficientes pequeños $(\mathbf{z}, c, \mathbf{u})$ y un mensaje $\mu$ tales que $\mathsf{H}\big(\mu, [\mathbf{A}' \mid \mathbf{t} \mid \mathbf{I}]\,(\mathbf{z}, c, \mathbf{u})\big) = c$ \cite{bai2021dilithium}.
+\end{itemize}
+En el modelo de oráculo aleatorio clásico, SelfTargetMSIS se reduce a MSIS con el \textit{forking lemma}, mediante una reducción no ajustada (\textit{non-tight}) \cite{pointcheval2000security, bai2021dilithium}. En el cuántico (QROM) esa reducción no se conoce: la seguridad se reduce a Module-LWE y SelfTargetMSIS \cite{kiltz2018concrete}, con las correcciones posteriores de la literatura \cite{devevey2023detailed, barbosa2023fixing}, y la dureza de SelfTargetMSIS se estima como la de MSIS sobre la matriz $[\mathbf{A}' \mid \mathbf{t} \mid \mathbf{I}]$, de $k' \times (2k'+1)$ polinomios ($1024 \times 2304$ enteros), con cota $\gamma_1 - \beta = 130\,934$ en norma infinito \cite{bai2021dilithium}. Existe además un ataque genérico que no usa la estructura del retículo: elegir $\mathbf{z}$ corto y un desafío $c$, calcular los bits altos de $\mathbf{A}'\mathbf{z} - c\,\mathbf{t}$ y esperar que el hash devuelva una semilla de la que se derive exactamente $c$; cada intento tiene éxito con probabilidad $1/|B_{23}| \approx 2^{-131.1}$.
+
+\paragraph{Dureza Concreta}
+La Tabla~\ref{tab:pqlite_dureza} resume las estimaciones, obtenidas con el \textit{lattice-estimator} (\textit{commit} \texttt{53da598}) en el modelo Core-SVP (Sección~\ref{sec:estimacion}).
+
+\begin{table}[H]
+\centering
+\caption{Seguridad estimada de ML-ZKAuth con los parámetros por defecto.}
+\label{tab:pqlite_dureza}
+\small
+\begin{tabularx}{\textwidth}{YlccC}
+\toprule
+\textbf{Instancia} & \textbf{Ataque más barato} & $\boldsymbol{\beta_{\mathrm{BKZ}}}$ & \textbf{Clásico} & \textbf{Cuántico} \\
+\midrule
+Clave de identidad: MLWE, dimensión 1024, $q'$, $\mathrm{CBD}(6)$ & primal (uSVP) & 439 & $2^{128.2}$ & $2^{116.3}$ \\
+Ídem, ataque dual híbrido & dual híbrido & 447 & $2^{130.5}$ & $2^{118.5}$ \\
+Solidez: MSIS sobre $[\mathbf{A}' \mid \mathbf{t} \mid \mathbf{I}]$, cota 130\,934 & reducción de retículo & 516 & $2^{150.7}$ & $2^{136.7}$ \\
+Adivinar el desafío: $|B_{23}|$ & búsqueda genérica & --- & $2^{131.1}$ & $\approx 2^{65.5}$ (Grover) \\
+Capa de transporte: MLWE, dimensión 768, $q$, $\mathrm{CBD}(2)$ & dual híbrido & 597 & $2^{174.3}$ & $2^{160.0}$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La seguridad frente a ataques de retículo es la menor de las tres primeras filas: $2^{128.2}$ clásico y $2^{116.3}$ cuántico en Core-SVP, al nivel de los demás candidatos de retículos del benchmark, que se ajustaron a la misma meta. La búsqueda genérica del desafío cuesta del orden de $2^{131}$ evaluaciones del hash, o unas $2^{65.5}$ con el algoritmo de Grover: el mismo orden que la búsqueda de Grover sobre una clave de AES-128, la referencia de la categoría 1 de NIST (Sección~\ref{sec:estimacion}). Los demás candidatos de retículos del benchmark tienen espacios de desafíos del mismo tamaño ($2^{129.6}$ a $2^{131.6}$); Dilithium usa espacios mayores ($2^{192}$ en su nivel más bajo) \cite{bai2021dilithium}. La capa de transporte usa los parámetros de ML-KEM-768, que FIPS~203 asigna a la categoría 3 \cite{nist2024fips203}, y su estimación no limita la del protocolo.
+
+\paragraph{Por Qué los 128 Bits No Dependen de Penalizaciones Adicionales}
+El modelo Core-SVP cuenta una sola llamada a SVP. Un ataque real paga además el número de pasadas y ventanas de BKZ, la memoria exponencial de la criba ($2^{0.2075 \cdot 439} \approx 2^{91}$ vectores para el bloque de la clave) y, en el caso cuántico, el costo de una memoria cuántica de acceso aleatorio (Sección~\ref{sec:estimacion}). Esas penalizaciones de memoria y de recorridos de ventana llevan, por ejemplo, a Kyber512 de $2^{118}$ en Core-SVP a unas $2^{151.5}$ compuertas \cite{avanzi2021kyber}, pero no se calcularon para ML-ZKAuth: la afirmación de este trabajo es la de Core-SVP, en la que la clave ya alcanza $2^{128.2}$ con $\eta' = 6$. Las penalizaciones son margen adicional, no parte del argumento, y ninguna de estas cifras certifica una categoría de NIST.
+
+\paragraph{Verificador Designado, No Vinculabilidad y Transferibilidad}
+Solo el servidor, que posee $vsk$, puede obtener $K_{\text{tok}}$ y leer $\text{tok}_2$ (Sección~\ref{sec:kem-dem}). Como el identificador del cliente viaja dentro de $\text{tok}_2$, el \textsf{Hello} no lleva identificador, las máscaras son nuevas en cada prueba y la respuesta del servidor también va cifrada, la terminal y los observadores del canal no pueden saber qué cliente se autentica ni relacionar dos autenticaciones del mismo cliente, salvo por metadatos ajenos al protocolo (dirección de red, horario) o por la longitud del token, que solo indica si se pidió clave de sesión. Frente al servidor no hay anonimato: identifica al cliente por diseño. Una vez descifrada, la prueba $(\mathbf{z}, \tilde{c})$ es verificable por cualquiera con $\mathbf{t}$ y $(\mathsf{tk}, \nu)$: es transferible y, por tanto, el protocolo no es denegable (Sección~\ref{sec:denegabilidad}).
+
+\paragraph{Repetición y Frescura}
+Una prueba está ligada a su reto porque $(\mathsf{tk}, \nu)$ entra en el hash: volver a cifrar una prueba válida bajo otro ticket u otra marca de tiempo produce un token que no verifica. Reenviar un token completo falla en el registro de consumo, que es común a todas las verificaciones del servidor, y un token antiguo falla en la ventana temporal. Un token con un reto que el servidor no emitió, o con el identificador de otro cliente, se rechaza sin consumir ningún ticket.
+
+\paragraph{Acuerdo de Clave Ligado a la Autenticación}
+Si la cuota del cliente viajara aparte, la terminal podría sustituirla por una suya: el servidor aceptaría la prueba legítima del cliente y acordaría la clave de sesión con la terminal. Como $\mathbf{b}_{\mathcal{C}}$ viaja dentro de $\text{tok}_2$, autenticada con $K_{\text{tok}}$, la terminal no puede sustituirla sin que falle la etiqueta, ni extraer la prueba para volver a cifrarla con otra cuota, porque no conoce $K_{\text{tok}}$. En sentido inverso, solo quien desencapsuló $\text{tok}_1$ conoce $K_{\text{tok}}$ y, con ella, $K_{\text{resp}}$, de modo que la terminal no puede responder en nombre del servidor ni alterar $(\mathbf{b}_{\mathcal{S}}, \mathbf{v})$: el servidor queda autenticado ante el cliente de forma implícita. La clave de sesión es pseudoaleatoria para un observador bajo el supuesto de que las cuotas de Module-LWE y la pista no revelan el bit reconciliado (la hipótesis PWE de la Sección~\ref{sec:pwe}) \cite{yang2025multiserver}.
+
+\paragraph{Limitaciones}
+\label{sec:pqlite-limitaciones}
+\begin{itemize}
+    \item El prototipo, escrito en Python con NumPy, no es de tiempo constante, y la multiplicación de polinomios es la convolución negacíclica directa, sin NTT. El número de intentos del probador se refleja en su tiempo de ejecución; su distribución no depende de la clave.
+    \item No se analizaron ataques de canal lateral ni de fallos inducidos sobre el dispositivo.
+    \item Este trabajo no demuestra la seguridad en el QROM de la variante concreta: se apoya en los análisis publicados de la plantilla de Dilithium \cite{liu2019revisiting, kiltz2018concrete, devevey2023detailed, barbosa2023fixing}.
+    \item El estado del verificador (la clave $vsk$ y el registro de tickets consumidos) vive en la memoria del proceso que ejecutó la configuración; un despliegue con varios procesos necesitaría un almacén compartido y atómico.
+    \item La reconciliación sobre un módulo impar sin duplicación deja un sesgo pequeño en cada bit de la clave de sesión.
 \end{itemize}
 
-Las tres funciones algebraicas fundamentales de Peikert adaptadas al módulo $q = 3329$ se definen coeficiente a coeficiente sobre $w \in \mathbb{Z}_q$ de la siguiente manera \cite{yang2025multiserver}:
+\subsection{Correspondencia con la Implementación}
+\label{sec:pqlite-implementacion}
 
-\begin{enumerate}
-    \item \textbf{Función de Redondeo Modular (Extracción de Bit de Clave):} Extrae el bit principal según la mitad del círculo modular \cite{yang2025multiserver}:
-    \begin{equation}
-    \lfloor w \rfloor_{q,2} = \left\lfloor \frac{2w}{q} \right\rceil \bmod 2 \in \{0, 1\}
-    \end{equation}
-    
-    \item \textbf{Función de Redondeo Cruzado (Generación de Señal Auxiliary $v$):} Identifica si el valor pertenece a un cuadrante Par ($Q_0, Q_2$) o Impar ($Q_1, Q_3$) \cite{yang2025multiserver}:
-    \begin{equation}
-    \langle w \rangle_{q,2} = \left\lfloor \frac{4w}{q} \right\rfloor \bmod 2 \in \{0, 1\}
-    \end{equation}
-    
-    \item \textbf{Función de Reconciliación de Errores ($\text{rec}$):} Reconstruye el bit de clave idéntico al del servidor utilizando el valor local del cliente $w_A$ y la pista de señal $v$ \cite{yang2025multiserver}:
-    \begin{equation}
-    \text{rec}(w_A, v) = \left\lfloor \frac{2}{q} \cdot \left( w_A - \left( (2v + 1) \cdot \frac{q}{4} \right) \right) \right\rceil \bmod 2 \in \{0, 1\}
-    \end{equation}
-\end{enumerate}
+El protocolo está implementado en el módulo \texttt{crypto\_core/protocols/proposed\_lwe.py} del repositorio, con el cifrado del token en \texttt{crypto\_core/token\_hiding.py} y las primitivas de retículo (muestreadores, codificación, aritmética de módulos, descomposición y reconciliación) en \texttt{crypto\_core/lwe/}. Implementa el contrato común con el que el benchmark evalúa a los seis candidatos, más tres operaciones propias del acuerdo de clave. La Tabla~\ref{tab:pqlite_codigo} relaciona cada paso con la función que lo ejecuta.
 
-\paragraph{Secuencia de Generación de la Clave de Sesión}
+\begin{table}[H]
+\centering
+\caption{Pasos del protocolo y funciones del prototipo.}
+\label{tab:pqlite_codigo}
+\small
+\begin{tabularx}{\textwidth}{lY}
+\toprule
+\textbf{Función} & \textbf{Paso del protocolo} \\
+\midrule
+\texttt{generate\_system\_parameters} & Configuración: $\rho$ y el par ML-KEM-768 $(vpk, vsk)$; publica $(\rho, vpk)$ y guarda $vsk$ en el almacén del proceso, indexado por $\mathsf{H}(vpk)$. \\
+\texttt{generate\_keypair} & Enrolamiento: $\mathbf{s}, \mathbf{e} \leftarrow \mathrm{CBD}(\eta')^{k'}$, $\mathbf{t} = \mathbf{A}'\mathbf{s} + \mathbf{e}$ y $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$. \\
+\texttt{generate\_challenge} & Respuesta del servidor al \textsf{Hello}: reto $(\mathsf{tk}, \nu)$. \\
+\texttt{solve\_challenge} & Prueba (Sección~\ref{sec:pqlite-prueba}) y token sin cuota de acuerdo de clave. Es la operación que mide el benchmark. \\
+\texttt{verify\_response} & Verificación completa (Sección~\ref{sec:pqlite-verificacion}); devuelve aceptación o rechazo. \\
+\texttt{solve\_challenge\_with\_key\_agreement} & Prueba y token con la cuota $\mathbf{b}_{\mathcal{C}}$; devuelve además el estado secreto del cliente $(\mathbf{s}_{\mathcal{C}}, K_{\text{resp}})$. \\
+\texttt{generate\_session\_reply} & Respuesta cifrada del servidor con $(\mathbf{b}_{\mathcal{S}}, \mathbf{v})$ y su mitad de la clave, una sola vez por ticket aceptado. \\
+\texttt{reconcile\_session\_key} & Descifrado de la respuesta y reconciliación del cliente. \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
-El procedimiento de concordancia de clave simétrica entre $\mathcal{S}$ y $\mathcal{C}$ se ejecuta mediante los siguientes pasos numerados \cite{yang2025multiserver, rewal2023quantumsafe}:
-
-\begin{enumerate}
-    \item \textbf{Cálculo del Polinomio Base en el Servidor ($\mathbf{w}_B$):} El servidor $\mathcal{S}$ combina el vector de respuesta del cliente con su secreto local para evaluar el polinomio de retículo $\mathbf{w}_B \in \mathcal{R}_q$ de $d = 256$ coeficientes \cite{yang2025multiserver}:
-    \begin{equation}
-    \mathbf{w}_B = \mathbf{b}_{\mathcal{C}}^T \mathbf{s}_{\mathcal{S}} + \mathbf{e}_{\mathcal{S}} \pmod q \in \mathcal{R}_q
-    \end{equation}
-    
-    \item \textbf{Extracción Central de la Clave y Derivación de la Pista ($\mathbf{v}$):} El servidor $\mathcal{S}$ deriva simultáneamente la clave simétrica del servidor $K_{\mathcal{S}} \in \{0, 1\}^{256}$ y el vector de señal auxiliar $\mathbf{v} \in \{0, 1\}^{256}$ aplicando las funciones de Peikert coeficiente a coeficiente sobre los 256 elementos de $\mathbf{w}_B$ \cite{yang2025multiserver}:
-    \begin{equation}
-    K_{\mathcal{S}}^{(i)} = \lfloor \mathbf{w}_B^{(i)} \rfloor_{q,2}, \quad \mathbf{v}^{(i)} = \langle \mathbf{w}_B^{(i)} \rangle_{q,2} \quad \text{para } i \in \{0, \dots, 255\}
-    \end{equation}
-    El vector de señal $\mathbf{v}$ posee una longitud de 256 bits (exactamente 32 bytes de carga útil) \cite{yang2025multiserver}.
-    
-    \item \textbf{Transmisión de la Pista en Texto Claro ($\mathbf{v}$):} El servidor $\mathcal{S}$ emite el bloque de 32 bytes $\mathbf{v}$ a través del canal de red. La terminal intermedia $\mathcal{T}$ retransmite $\mathbf{v}$ de forma transparente hacia el dispositivo cliente $\mathcal{C}$ \cite{yang2025multiserver}.
-    
-    \item \textbf{Reconciliación Paralela en el Cliente ($\mathcal{C}$):} El cliente $\mathcal{C}$ recupera $\mathbf{v}$, calcula su valor local $\mathbf{w}_A = \mathbf{b}_{\mathcal{S}}^T \mathbf{s}_{\mathcal{C}} \pmod q \in \mathcal{R}_q$ y ejecuta la función de reconciliación en paralelo sobre sus 256 coeficientes \cite{yang2025multiserver}:
-    \begin{equation}
-    K_{\mathcal{C}}^{(i)} = \text{rec}\left(\mathbf{w}_A^{(i)}, \mathbf{v}^{(i)}\right) \quad \text{para } i \in \{0, \dots, 255\}
-    \end{equation}
-    Si la norma del error residual respeta la cota $\|\mathbf{e}_{\text{rec}}\|_\infty < q/8 \approx 416$, la propiedad de convergencia del teorema de Peikert garantiza la coincidencia idéntica de la clave simétrica de 256 bits \cite{yang2025multiserver, rewal2023quantumsafe}:
-    \begin{equation}
-    K_{\mathcal{C}} = K_{\mathcal{S}} = K_{\text{sesión}} \in \{0, 1\}^{256}
-    \end{equation}
-\end{enumerate}
-
-\paragraph{Inmunidad de la Pista $\mathbf{v}$ en el Canal Público}
-
-La transmisión del vector de señal $\mathbf{v}$ en texto claro a través del canal no compromete la seguridad de la clave de sesión $K_{\text{sesión}}$ frente a un adversario $\mathcal{A}$ que intercepte el tráfico \cite{yang2025multiserver}. Debido a la simetría geométrica de la partición en cuatro cuadrantes, una señal $v^{(i)} = 0$ indica que el coeficiente está en un cuadrante Par, el cual corresponde con idéntica probabilidad del 50\% tanto al Cuadrante 0 ($Q_0 \implies \text{Bit } 0$) como al Cuadrante 2 ($Q_2 \implies \text{Bit } 1$) \cite{yang2025multiserver}:
-
-\begin{equation}
-\Pr\left(K^{(i)} = 0 \mid v^{(i)} = 0\right) = \Pr\left(K^{(i)} = 1 \mid v^{(i)} = 0\right) = \frac{1}{2}
-\end{equation}
-
-Por consiguiente, la distribución de la pista $\mathbf{v}$ es estadísticamente independiente del vector de clave $K_{\text{sesión}}$, garantizando que el adversario obtenga cero bits de ventaja computacional sobre la clave simétrica acordada \cite{yang2025multiserver, rewal2023quantumsafe}.
-
-\subsubsection{Análisis Teórico de Seguridad, Resistencia Poscuántica y Complejidad}
-
-\paragraph{Sustento Criptográfico mediante Leaky LWE y Módulos Compactos}
-
-La seguridad formal del protocolo PQLite-Auth v2 ante la reducción del módulo a $q = 3329$ se fundamenta en la teoría de \textit{Leaky LWE} formalizada por Lai, Swarnakar y Woo \cite{lai2025leaky}. En las construcciones ZKP tradicionales basadas en retículos, la demostración de la propiedad de conocimiento cero requiere la técnica de \textit{inundación de ruido} (\textit{noise flooding}), la cual fuerza a escalar el módulo a enteros gigantes ($q > 2^{128}$) y las dimensiones a valores masivos para evitar que las respuestas filtren la clave secreta \cite{lai2025leaky}.
-
-Bajo el marco de Leaky LWE, se demuestra que la presencia de fugas lineales ruidosas de la forma $\mathbf{l}^T = (\mathbf{s}^T, \mathbf{e}^T)\mathbf{L} + \mathbf{f}^T \pmod q$ no reduce la dureza computacional del problema LWE subyacente, siempre que la matriz de desafío $\mathbf{L}$ satisfaga la cota de norma espectral $\|\mathbf{L}^T \mathbf{L}\| \le \beta_L$ \cite{lai2025leaky}. Dado que la desviación del ruido de fuga $\sigma_f$ únicamente escala en función de la raíz cuadrada del número de consultas $Q$ ($q \ge c \cdot \sqrt{Q}$), el protocolo opera de forma probadamente segura con el módulo compacto $q = 3329$ (16 bits) \cite{yang2025multiserver, lai2025leaky}. Las respuestas emitidas resultan computacionalmente indistinguibles de ruido aleatorio uniforme sobre $\mathbb{Z}_q$, garantizando cero fuga de información sobre la clave privada $\mathbf{s}$ \cite{lai2025leaky}.
-
-\paragraph{Análisis de Dureza Geométrica y Resistencia ante Ataques BKZ}
-
-La evaluación de la resistencia poscuántica concreta del protocolo se determina mediante la estimación de la complejidad del algoritmo de reducción de bases de retículos BKZ (\textit{Block-Korkine-Zolotarev}) ejecutado sobre la instancia Module-LWE del sistema \cite{badiezadegan2026complexity, mukil2026implementing}.
-
-En el esquema PQLite-Auth v2, la matriz de polinomios posee rango $k = 3$ sobre el anillo $\mathcal{R}_q$ de grado $d = 256$ \cite{yang2025multiserver}. Aunque la dimensión matricial sea $k=3$, la dimensión espacial total del retículo euclídeo proyectado es \cite{yang2025multiserver}:
-\begin{equation}
-N = k \times d = 3 \times 256 = 768
-\end{equation}
-
-Para recuperar la clave corta $(\mathbf{s}, \mathbf{e})$ en un retículo de dimensión $N = 768$ con módulo $q = 3329$ y desviación de ruido $\sigma = 1$, un atacante cuantitativo debe reducir la base del retículo dual hasta alcanzar un factor de Hermite raíz $\delta_0 \approx 1.0039$ \cite{badiezadegan2026complexity}. La heurística de Gauss para el perfil de BKZ establece que lograr un factor de calidad $\delta_0 \le 1.0039$ exige fijar un tamaño de bloque de reducción de subespacio $\beta_{\text{BKZ}} \ge 400$ \cite{badiezadegan2026complexity}.
-
-La complejidad temporal de resolver el problema del vector más corto (SVP) exacto dentro de cada sub-bloque de dimensión $\beta_{\text{BKZ}}$ utilizando los algoritmos más eficientes de cribado cuántico (\textit{quantum sieving}) se modela mediante la cota \cite{badiezadegan2026complexity, mukil2026implementing}:
-\begin{equation}
-T_{\text{Sieve}}(\beta_{\text{BKZ}}) \approx 2^{0.265 \cdot \beta_{\text{BKZ}}} \text{ operaciones cuánticas}
-\end{equation}
-
-Sustituyendo el tamaño de bloque mínimo $\beta_{\text{BKZ}} = 400$ e integrando la sobrecarga del número de recorridos (\textit{tours}) e iteraciones de la ventana sobre las 768 dimensiones, la complejidad computacional total del ataque BKZ resulta en \cite{badiezadegan2026complexity, mukil2026implementing}:
-\begin{equation}
-T_{\text{BKZ}}(400) \ge 2^{160} \text{ operaciones cuánticas}
-\end{equation}
-
-Puesto que $T_{\text{BKZ}} \ge 2^{160}$ supera con holgura la barrera de $2^{128}$ operaciones exigida por el estándar NIST Nivel 1 (equivalente a la seguridad de CRYSTALS-Kyber 768), el protocolo se certifica como formalmente inexpugnable ante ataques geométricos y reducciones duales de bases \cite{badiezadegan2026complexity, mukil2026implementing}.
-
-\paragraph{Sobrecarga de Memoria, Comunicación y Cómputo en el Dispositivo Cliente}
-
-El diseño de PQLite-Auth v2 optimiza la eficiencia de recursos en el dispositivo cliente ($\mathcal{C}$) en tres ejes críticos \cite{mukil2026implementing, ma2026laasso}:
-
-\begin{enumerate}
-    \item \textbf{Huella de Memoria Estática y Dinámica (\textit{Memory Footprint}):}
-    \begin{itemize}
-        \item \textit{Clave Privada ($\mathbf{s}$):} Vector de $k=3$ polinomios de 256 coeficientes en $\mathbb{Z}_{3329}$ (almacenado de forma compacta utilizando 12 bits por coeficiente): $3 \times 256 \times 12 / 8 = 1.152 \text{ bytes} \approx 1.15 \text{ KB}$ \cite{yang2025multiserver}.
-        \item \textit{Matriz Pública ($\mathbf{A}$):} No se almacena explícitamente en la memoria Flash del cliente; se expande de forma determinista desde una semilla uniforme de 32 bytes ($\rho$) mediante la función XOF SHAKE-128, reduciendo el consumo de almacenamiento estático \cite{yang2025multiserver}.
-        \item \textit{Clave de Verificación del Servidor ($vpk$):} Clave pública Kyber-768 almacenada en memoria de solo lectura: $1.184 \text{ bytes} \approx 1.18 \text{ KB}$ \cite{mukil2026implementing}.
-    \end{itemize}
-
-    \item \textbf{Ancho de Banda y Sobrecarga de Comunicación (\textit{Communication Overhead}):}
-    \begin{itemize}
-        \item \textit{Token de Autenticación ($\text{tok} = (\text{tok}_1, \text{tok}_2)$):} El texto cifrado asimétrico $\text{tok}_1$ (Kyber-768) requiere $1.088 \text{ bytes}$. La carga útil simétrica $\text{tok}_2$ (AES-256) que contiene $(\mathbf{z}, \mathbf{w}, \mathbf{t}_{\text{ticket}}, \nu)$ requiere aproximadamente $2.304 \text{ bytes}$. La transmisión total emitida por $\mathcal{C}$ es de $\approx 3.39 \text{ KB}$ \cite{ma2026laasso}.
-        \item \textit{Pista de Reconciliación ($\mathbf{v}$):} La respuesta enviada por el servidor para el acuerdo de clave de sesión consiste en un vector binario de 256 bits, lo que equivale a solo $32 \text{ bytes}$ de tráfico de entrada en el canal \cite{yang2025multiserver}.
-    \end{itemize}
-
-    \item \textbf{Eficiencia Computacional y Mitigación de Canales Laterales:}
-    \begin{itemize}
-        \item \textit{Multiplicación Polinomial NTT:} La transformada NTT sobre $\mathbb{Z}_{3329}[x]/\langle x^{256} + 1 \rangle$ reduce la complejidad de multiplicación de $\mathcal{O}(d^2)$ a $\mathcal{O}(d \log d)$, requiriendo menos de 10.000 ciclos de reloj por producto en microcontroladores de 32 bits \cite{yang2025multiserver, mukil2026implementing}.
-        \item \textit{CBD en Tiempo Constante:} El muestreo de la Distribución Binomial Centrada $\text{CBD}(\eta=2)$ se ejecuta mediante operaciones lógicas a nivel de palabra en tiempo constante $\mathcal{O}(1)$, garantizando inmunidad frente a ataques de análisis de tiempo y potencia por canales laterales (\textit{Side-Channel Attacks} - SCA) \cite{yang2025multiserver, mukil2026implementing}.
-    \end{itemize}
-\end{enumerate}
+Los objetos se codifican empaquetando los coeficientes al número mínimo de bits: 23 bits para $\mathbf{t}$ (2\,944 bytes), 18 bits para $\mathbf{z}$ desplazado por $\gamma_1$, 4 bits para $\mathbf{s}$ y $\mathbf{e}$ desplazados por $\eta'$ (512 bytes cada uno) y 12 bits para las cuotas de la capa de transporte (1\,152 bytes). Toda la aleatoriedad proviene de generadores criptográficos: el del sistema operativo para los muestreos, los tickets y los \textit{nonces}, y el de la biblioteca criptográfica para ML-KEM. El formato de expansión de las matrices es propio del prototipo, y $\mathsf{SampleInBall}$ elige las posiciones leyendo palabras de 16 bits con rechazo (FIPS~204 lee bytes): la distribución es la misma, pero la misma semilla no produce el mismo desafío que ML-DSA. El rango $k'$, el ruido $\eta'$, $\kappa$, $\gamma_1$, $\gamma_2$ y $\Delta_\nu$ son ajustables; la implementación rechaza cualquier combinación con un espacio de desafíos menor que $2^{128}$, con $2\gamma_2$ que no divida a $q'-1$ o con una probabilidad de aceptación por intento menor que $0.05$, y fija los demás parámetros.

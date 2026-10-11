@@ -341,8 +341,27 @@ implementación y no como medidas absolutas de dificultad.
 Las estimaciones de seguridad dependen de los modelos de ataque, parámetros y
 herramientas disponibles al momento de realizar el estudio.
 
-\todoresult{Describir herramienta de estimación utilizada, versión, supuestos y
-limitaciones.}
+Las estimaciones de la Sección~\ref{sec:security-evaluation} se obtuvieron con el
+\textit{lattice-estimator} (\textit{commit} \texttt{53da598}) en el modelo de costo Core-SVP,
+validado contra los tamaños de bloque publicados para Kyber512, Kyber768 y Dilithium2
+(Sección~\ref{sec:estimacion}). Sus supuestos y limitaciones son:
+
+\begin{itemize}
+    \item Core-SVP cuenta una sola llamada a SVP en la dimensión del bloque: es una cota
+    inferior conservadora para comparar parámetros, no el costo de un ataque completo, y no
+    certifica una categoría de NIST. Las estimaciones refinadas en compuertas y memoria no
+    se calcularon.
+    \item Las instancias de Module-LWE y Ring-LWE se estiman como LWE de la misma
+    dimensión, porque no se conocen ataques que aprovechen la estructura algebraica para
+    estos parámetros.
+    \item La solidez de las pruebas se estima como un problema SIS o MSIS; en el modelo de
+    oráculo aleatorio cuántico, SelfTargetMSIS se toma como supuesto con esa dureza
+    estimada.
+    \item La búsqueda genérica del desafío queda fuera de la herramienta; se acota por el
+    tamaño del espacio de desafíos.
+    \item Las cifras dependen de los modelos de ataque disponibles al momento del estudio y
+    pueden cambiar con nuevos avances en criptoanálisis.
+\end{itemize}
 
 
 % ============================================================

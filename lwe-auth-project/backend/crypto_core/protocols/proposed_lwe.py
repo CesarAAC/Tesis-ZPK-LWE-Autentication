@@ -1,10 +1,12 @@
-"""PQLite-Auth v2 (``proposed_lwe``), the protocol proposed by the thesis, in its
+"""ML-ZKAuth (``proposed_lwe``), the protocol proposed by the thesis, in its
 dual-modulus form.
 
 Cryptographic sources of truth
     1. ``Document/capitulos/04-Protocolo Propio.tex``. Comments of the form
        ``tex:N-M`` point to the lines of that file this code implements (as of
-       the version the implementation was written against).
+       the version the implementation was written against). Since 2026-10-07
+       the chapter is rewritten to describe this implementation; the ``tex:``
+       comments still point to that earlier manuscript.
     2. The authors' "dual modulus" instruction (their Option A), which replaces
        the proof of that chapter: Fiat-Shamir with aborts over a second modulus
        q' = 8380417 with the HighBits / LowBits decomposition and the rejection
@@ -23,26 +25,31 @@ Flow
                 A' in R_q'^{k' x k'} and A in R_q^{k x k} are SHAKE-128
                 expansions of rho under different seeds. system_parameters =
                 {rho, vpk}; vsk stays in the process keystore.
-    Enrollment  s, e <- CBD(eta)^k', t = A' s + e mod q'. Public key t;
-                private key (s, e) plus H(t).
+    Enrollment  s, e <- CBD(eta')^k', t = A' s + e mod q'. Public key t;
+                private key (s, e) plus id_C = H(t), the client identifier.
     Challenge   the verifier issues a single-use ticket (256 bits) and the
-                timestamp nu.
+                timestamp nu (the client's "Hello" is the request for them).
     Response    y  <- uniform on [-(gamma1 - 1), gamma1 - 1]^(k' d)
                 w  = A' y mod q',  w1 = HighBits(w, 2 gamma2)
                 c~ = H(A', t, w1, ticket, nu),  c = SampleInBall(c~)
                 z  = y + c s
                 restart unless ||z||_inf < gamma1 - beta
                            and ||LowBits(w - c e, 2 gamma2)||_inf < gamma2 - beta
-                tok1 = ML-KEM-768 ciphertext, tok2 = AES-256-GCM_K(z, c~, ticket, nu).
-    Verify      decrypt, time window, spent-ticket log, ||z||_inf < gamma1 - beta,
+                tok1 = ML-KEM-768 ciphertext of K,
+                tok2 = AES-256-GCM_K(z, c~, ticket, nu, id_C [, b_C]).
+    Verify      decrypt, id_C = H(t), (ticket, nu) as issued, time window,
+                spent-ticket log, ||z||_inf < gamma1 - beta,
                 w1' = HighBits(A' z - c t, 2 gamma2), accept iff
                 H(A', t, w1', ticket, nu) = c~.
-    Session key ``generate_reconciliation_hint`` / ``reconcile_session_key``
-                (Peikert reconciliation over q), outside the ``AuthProtocol``
-                contract.
+    Session key outside the ``AuthProtocol`` contract (Peikert reconciliation
+                over q). ``solve_challenge_with_key_agreement`` puts the client
+                share b_C = A s_C + e_C inside tok2; once the token is accepted,
+                ``generate_session_reply`` returns (b_S, v) sealed under a key
+                derived from K, and ``reconcile_session_key`` gives the client
+                the same 256 bits.
 
 Why an honest proof always verifies
-    A' z - c t = A' y + c A' s - c (A' s + e) = w - c e. With beta = eta * kappa,
+    A' z - c t = A' y + c A' s - c (A' s + e) = w - c e. With beta = eta' * kappa,
     ||c e||_inf <= beta, and the prover only releases z when
     ||LowBits(w - c e)||_inf < gamma2 - beta, so adding c e back does not change
     the high bits: HighBits(w - c e) = HighBits(w) = w1 and the verifier hashes
@@ -64,7 +71,7 @@ What each source leaves open, and the reading taken
        scalar matrix L = c I, with c a short ring element.
     3. Challenge distribution. c has ``kappa`` coefficients in {-1, 1} and the
        rest zero (default 23, the smallest weight giving at least 2^128
-       challenges for d = 256), so beta = eta * kappa bounds c s and c e.
+       challenges for d = 256), so beta = eta' * kappa bounds c s and c e.
     4. ``gamma1`` and ``gamma2``. Neither source gives them. The defaults are
        ML-DSA-44's, 2^17 and (q' - 1) / 88, the values Dilithium defines for
        this modulus.
@@ -83,14 +90,29 @@ What each source leaves open, and the reading taken
        which tolerates no error at all.
     10. Key-agreement shares. The manuscript uses b_C, b_S, s_S, e_S and s_C
         without defining them or saying how they travel. Following the cited
-        source, ``generate_key_agreement_share`` builds b = A s + e (client)
-        and b = A^T s + e (server); exchanging them is left to the caller.
+        source, b_C = A s_C + e_C and b_S = A^T s_S + e_S. Since 2026-10-07
+        (authors' decision D2) b_C travels inside tok2, next to the proof, and
+        (b_S, v) comes back sealed with AES-256-GCM under a key derived from
+        K: a relay can neither swap b_C for its own share (which would give it
+        the session key of an authenticated client) nor answer in the
+        server's name.
+    11. Noise of the proof layer, ``eta_proof`` (eta'). The manuscript fixes
+        eta = 2 for its single modulus. With rank 4 at q' that gives about
+        2^115 Core-SVP; the authors asked on 2026-10-04 for at least 2^128,
+        so the identity key uses CBD(6) (2^128.2). The transport layer keeps
+        eta = 2. beta = eta' * kappa = 138, and a prover attempt is released
+        with probability about 0.077 (some 13 attempts per proof).
+    12. Client identifier (authors' decision D1, 2026-10-07). The manuscript
+        does not say how the server finds the t to verify against. tok2
+        carries id_C = H(t), so only the verifier sees it: a deployment looks
+        t up by id_C; the contract, which hands t to ``verify_response``,
+        checks that the two agree.
 
 Security status (stated precisely; nothing beyond this is claimed)
     * The proof is Dilithium's template without public-key compression
       (Figure 1 of its round-3 specification: no Power2Round, no hints), with a
-      square matrix, CBD(eta) secrets and (ticket, nu) in the place of the
-      message. It is a NIZK in the programmable random-oracle model: the
+      square matrix, CBD(eta') secrets and (ticket, nu) in the place of the
+      message. It is a statistical NIZK in the programmable random-oracle model: the
       simulator samples c~, derives c, samples z uniformly with
       ||z||_inf < gamma1 - beta, restarts unless
       ||LowBits(A' z - c t)||_inf < gamma2 - beta, and programs
@@ -106,11 +128,12 @@ Security status (stated precisely; nothing beyond this is claimed)
       and modulus of the proof layer.
     * Those hardness assumptions must be estimated for the parameters in use;
       the protocol does not do it (``benchmarking.hardness`` does, with the
-      lattice estimator). With the default rank 4 the key is an instance of
-      dimension 1024 at a 23-bit modulus, near 2^115 classical operations in
-      the Core-SVP model; with rank 3 it drops to about 2^79, below the
-      level of ML-KEM-768 (dimension 768 at q = 3329). The README gives the
-      figures per rank.
+      lattice estimator). With the defaults (rank 4, CBD(6)) the key is an
+      instance of dimension 1024 at a 23-bit modulus, about 2^128.2 classical
+      and 2^116.3 quantum in the Core-SVP model, and soundness about 2^150.7.
+      With CBD(2) it would be about 2^115, and with rank 3 about 2^79. A
+      Core-SVP figure is a comparison estimate, not a proof of a NIST
+      category. ``docs/estimacion-de-dureza.md`` gives the procedure.
     * Not analysed: the quantum random-oracle model and side channels. The
       number of prover attempts shows in its running time, and its distribution
       does not depend on the key; NumPy arithmetic is not constant time;
@@ -119,7 +142,12 @@ Security status (stated precisely; nothing beyond this is claimed)
       the verifier can show it to third parties. Token hiding restricts who
       can read the proof, not who can check it.
     * Parties other than the verifier see only the token, protected by
-      ML-KEM-768 and AES-256-GCM.
+      ML-KEM-768 and AES-256-GCM, and the sealed server reply.
+    * The session key is bound to the authentication through K: b_C is
+      authenticated with the proof and (b_S, v) under a key only the verifier
+      and the client hold. The server is authenticated to the client
+      implicitly (only it can open tok1); there is no forward secrecy beyond
+      the ephemeral shares, and shares are never reused.
 """
 
 from __future__ import annotations
@@ -155,8 +183,9 @@ ETA = 2
 # Proof-layer modulus fixed by the dual-modulus instruction (the ML-DSA prime, 23 bits).
 PROOF_MODULUS = 8_380_417
 
-# Values neither source fixes (readings 1, 3, 4 and 6 above).
+# Values neither source fixes (readings 1, 3, 4, 6 and 11 above).
 DEFAULT_PROOF_RANK = 4
+DEFAULT_PROOF_ETA = 6
 DEFAULT_KAPPA = 23
 DEFAULT_GAMMA1 = 1 << 17
 DEFAULT_GAMMA2 = (PROOF_MODULUS - 1) // 88
@@ -166,8 +195,12 @@ SEED_BYTES = 32
 TICKET_BYTES = 32
 TIMESTAMP_BYTES = 8
 DIGEST_BYTES = 32
+CLIENT_ID_BYTES = DIGEST_BYTES      # id_C = H(t)
 HINT_BYTES = DEGREE // 8
+SHARE_BYTES = codec.packed_length(RANK * DEGREE, MODULUS)    # b_C or b_S, 12 bits each
+REPLY_BYTES = SHARE_BYTES + HINT_BYTES                       # (b_S, v) in the server reply
 MAX_PROOF_RANK = 8
+MAX_PROOF_ETA = 8
 MIN_CHALLENGE_SPACE_BITS = 128
 MIN_ACCEPTANCE_PROBABILITY = 0.05
 # Sanity limits, gamma1 <= q' / 8 and at least 16 high values, that still admit the
@@ -176,10 +209,9 @@ MIN_MODULUS_TO_GAMMA1_RATIO = 8
 MIN_HIGH_VALUES = 16
 MAX_PROOF_ATTEMPTS = 1000
 
-_TUNABLE = ("k_proof", "kappa", "gamma1", "gamma2", "time_window_seconds")
+_TUNABLE = ("k_proof", "eta_proof", "kappa", "gamma1", "gamma2", "time_window_seconds")
 _MAX_TIME_WINDOW_SECONDS = 86_400
 _MAX_TIMESTAMP = (1 << (8 * TIMESTAMP_BYTES - 1)) - 1
-_SECRET_RANGE = 2 * ETA + 1
 _KEYSTORE_CAPACITY = 65_536
 _SPENT_LOG_PRUNE_SIZE = 8_192
 
@@ -287,7 +319,15 @@ class _Context:
 
     @property
     def payload_bytes(self) -> int:
-        return self.response_bytes + DIGEST_BYTES + TICKET_BYTES + TIMESTAMP_BYTES
+        """Plaintext of tok2 without key agreement: z, c~, ticket, nu, id_C."""
+        return (
+            self.response_bytes + DIGEST_BYTES + TICKET_BYTES + TIMESTAMP_BYTES + CLIENT_ID_BYTES
+        )
+
+    @property
+    def payload_bytes_with_share(self) -> int:
+        """Plaintext of tok2 when the client also sends its key-agreement share b_C."""
+        return self.payload_bytes + SHARE_BYTES
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,6 +336,18 @@ class _OpenedToken:
     challenge_seed: bytes
     ticket: bytes
     nu: int
+    client_id: bytes
+    client_share: np.ndarray | None
+    token_key: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingSession:
+    """An accepted ticket that may still receive one session reply."""
+
+    nu: int
+    client_share: np.ndarray | None
+    reply_key: bytes
 
 
 @dataclass(slots=True)
@@ -305,7 +357,7 @@ class _VerifierState:
     private_seed: bytes
     lock: threading.Lock = field(default_factory=threading.Lock)
     spent: dict[bytes, int] = field(default_factory=dict)
-    authenticated: dict[bytes, int] = field(default_factory=dict)
+    authenticated: dict[bytes, _PendingSession] = field(default_factory=dict)
     _private_key: Any = None
 
     def private_key(self) -> Any:
@@ -351,7 +403,7 @@ _KEYSTORE = _VerifierKeystore(_KEYSTORE_CAPACITY)
 
 
 class ProposedLWEAuthProtocol(AuthProtocol):
-    """PQLite-Auth v2 mapped onto the common ``AuthProtocol`` lifecycle."""
+    """ML-ZKAuth mapped onto the common ``AuthProtocol`` lifecycle."""
 
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         # Injectable so the time-window check can be tested without sleeping.
@@ -384,11 +436,14 @@ class ProposedLWEAuthProtocol(AuthProtocol):
                 type(overrides[key]) is not type(expected) or overrides[key] != expected
             ):
                 raise InvalidProtocolDataError(
-                    f"'{key}' está fijado a {expected!r} en PQLite-Auth v2."
+                    f"'{key}' está fijado a {expected!r} en ML-ZKAuth."
                 )
 
         proof_rank = _require_int(
             overrides.get("k_proof", DEFAULT_PROOF_RANK), "k_proof", RANK, MAX_PROOF_RANK
+        )
+        proof_eta = _require_int(
+            overrides.get("eta_proof", DEFAULT_PROOF_ETA), "eta_proof", 1, MAX_PROOF_ETA
         )
         kappa = _require_int(overrides.get("kappa", DEFAULT_KAPPA), "kappa", 1, DEGREE)
         if challenge_space_bits(DEGREE, kappa) < MIN_CHALLENGE_SPACE_BITS:
@@ -396,12 +451,12 @@ class ProposedLWEAuthProtocol(AuthProtocol):
                 f"El espacio de desafíos debe tener al menos {MIN_CHALLENGE_SPACE_BITS} bits."
             )
         # Largest value ||c s||_inf and ||c e||_inf can take: derived, not tunable.
-        beta = ETA * kappa
+        beta = proof_eta * kappa
         if "beta" in overrides and (
             type(overrides["beta"]) is not int or overrides["beta"] != beta
         ):
             raise InvalidProtocolDataError(
-                f"'beta' no es ajustable: vale eta * kappa = {beta}."
+                f"'beta' no es ajustable: vale eta_proof * kappa = {beta}."
             )
         gamma1 = _require_int(
             overrides.get("gamma1", DEFAULT_GAMMA1),
@@ -435,6 +490,7 @@ class ProposedLWEAuthProtocol(AuthProtocol):
         return {
             **fixed,
             "k_proof": proof_rank,
+            "eta_proof": proof_eta,
             "kappa": kappa,
             "beta": beta,
             "gamma1": gamma1,
@@ -509,16 +565,17 @@ class ProposedLWEAuthProtocol(AuthProtocol):
         context: _Context,
         private_key: SerializedData,
     ) -> tuple[np.ndarray, np.ndarray, bytes]:
-        """Return (s, e, H(t)); s and e are stored as eta + value at 3 bits each."""
+        """Return (s, e, H(t)); s and e are stored as eta' + value (4 bits for eta' = 6)."""
         label = "la clave privada"
         private_key = _require_mapping(private_key, "La clave privada")
+        proof_eta = context.parameters["eta_proof"]
         vectors = []
         for name in ("s", "e"):
-            # Offsets above 2 eta are rejected by the decoder: this is the CBD range check.
+            # Offsets above 2 eta' are rejected by the decoder: this is the CBD range check.
             _, offsets = codec.decode_packed(
-                _field(private_key, name, label), name, context.proof_shape, _SECRET_RANGE
+                _field(private_key, name, label), name, context.proof_shape, 2 * proof_eta + 1
             )
-            vectors.append(offsets - ETA)
+            vectors.append(offsets - proof_eta)
         public_key_digest = codec.decode_fixed_bytes(
             _field(private_key, "public_key_digest", label),
             "public_key_digest",
@@ -538,11 +595,26 @@ class ProposedLWEAuthProtocol(AuthProtocol):
             )
         return vector
 
+    def _agreement_share(self, context: _Context, role: str) -> tuple[np.ndarray, np.ndarray]:
+        """Return (share, secret): b_C = A s_C + e_C for the client, b_S = A^T s_S + e_S
+        for the server, with CBD(eta) secrets and errors over q = 3329, as in the
+        source the manuscript cites."""
+        matrix = self._agreement_matrix(context)
+        if role == "server":
+            matrix = module.transpose(matrix)
+        secret = sampling.sample_centered_binomial((RANK, DEGREE), ETA)
+        error = sampling.sample_centered_binomial((RANK, DEGREE), ETA)
+        share = (module.matrix_vector(matrix, secret, MODULUS) + error) % MODULUS
+        return share, secret
+
     @staticmethod
-    def _share(container: SerializedData, label: str) -> np.ndarray:
-        container = _require_mapping(container, label[0].upper() + label[1:])
-        _, share = codec.decode_packed(_field(container, "b", label), "b", (RANK, DEGREE), MODULUS)
-        return share
+    def _reply_key(token_key: bytes) -> bytes:
+        """Key of the server reply, derived from the token key K (domain separation)."""
+        return _digest(_DOMAIN, b"session-reply-key", token_key)
+
+    @staticmethod
+    def _reply_associated_data(context: _Context, ticket: bytes) -> bytes:
+        return _digest(_DOMAIN, b"session-reply", context.parameters_digest, ticket)
 
     @staticmethod
     def _parse_challenge(challenge: SerializedData) -> tuple[bytes, int]:
@@ -645,21 +717,30 @@ class ProposedLWEAuthProtocol(AuthProtocol):
         challenge_seed: bytes,
         ticket: bytes,
         nu: int,
-    ) -> SerializedData:
-        """tok = (tok1, tok2) hiding {z, c~, ticket, nu} (tex:98-120, with c~ in place of w)."""
+        client_id: bytes,
+        client_share: np.ndarray | None = None,
+    ) -> tuple[SerializedData, bytes]:
+        """Return (tok, K): tok = (tok1, tok2) hiding {z, c~, ticket, nu, id_C [, b_C]}.
+
+        tex:98-120 with c~ in place of w, plus the client identifier (reading 12)
+        and, when the client starts a key agreement, its share (reading 10).
+        """
         gamma1 = context.parameters["gamma1"]
         payload = (
             codec.pack_coefficients(np.asarray(response) + gamma1, 2 * gamma1)
             + challenge_seed
             + ticket
             + nu.to_bytes(TIMESTAMP_BYTES, "big")
+            + client_id
         )
-        tok1, tok2 = token_hiding.seal(
+        if client_share is not None:
+            payload += codec.pack_coefficients(client_share, MODULUS)
+        tok1, tok2, token_key = token_hiding.seal_with_secret(
             context.verifier_public_key,
             payload,
             self._token_associated_data(context),
         )
-        return {"tok1": codec.encode_bytes(tok1), "tok2": codec.encode_bytes(tok2)}
+        return {"tok1": codec.encode_bytes(tok1), "tok2": codec.encode_bytes(tok2)}, token_key
 
     def _open_token(
         self,
@@ -674,25 +755,38 @@ class ProposedLWEAuthProtocol(AuthProtocol):
             "tok1",
             token_hiding.CIPHERTEXT_BYTES,
         )
-        tok2 = codec.decode_fixed_bytes(
-            _field(response, "tok2", "la respuesta"),
-            "tok2",
+        tok2 = codec.decode_base64(_field(response, "tok2", "la respuesta"), "tok2")
+        lengths = {
             token_hiding.sealed_length(context.payload_bytes),
-        )
-        payload = token_hiding.open_token(
+            token_hiding.sealed_length(context.payload_bytes_with_share),
+        }
+        if len(tok2) not in lengths:
+            raise InvalidProtocolDataError(
+                f"'tok2' debe tener {' o '.join(str(length) for length in sorted(lengths))} bytes."
+            )
+        opened = token_hiding.open_token_with_secret(
             state.private_key(),
             tok1,
             tok2,
             self._token_associated_data(context),
         )
-        if payload is None:
+        if opened is None:
             return None
+        payload, token_key = opened
         gamma1 = context.parameters["gamma1"]
         seed_start = context.response_bytes
         ticket_start = seed_start + DIGEST_BYTES
+        nu_start = ticket_start + TICKET_BYTES
+        id_start = nu_start + TIMESTAMP_BYTES
+        share_start = id_start + CLIENT_ID_BYTES
         try:
             offsets = codec.unpack_coefficients(
                 payload[:seed_start], "z", context.proof_shape, 2 * gamma1
+            )
+            client_share = (
+                codec.unpack_coefficients(payload[share_start:], "b", (RANK, DEGREE), MODULUS)
+                if len(payload) > share_start
+                else None
             )
         except InvalidProtocolDataError:
             # Authentic ciphertext whose plaintext is not a response: a dishonest prover.
@@ -700,8 +794,11 @@ class ProposedLWEAuthProtocol(AuthProtocol):
         return _OpenedToken(
             response=offsets - gamma1,
             challenge_seed=payload[seed_start:ticket_start],
-            ticket=payload[ticket_start: ticket_start + TICKET_BYTES],
-            nu=int.from_bytes(payload[-TIMESTAMP_BYTES:], "big"),
+            ticket=payload[ticket_start:nu_start],
+            nu=int.from_bytes(payload[nu_start:id_start], "big"),
+            client_id=payload[id_start:share_start],
+            client_share=client_share,
+            token_key=token_key,
         )
 
     @staticmethod
@@ -718,9 +815,12 @@ class ProposedLWEAuthProtocol(AuthProtocol):
             if len(state.spent) >= _SPENT_LOG_PRUNE_SIZE:
                 # Tickets older than the time window are rejected before this point,
                 # so forgetting them cannot enable a replay.
-                for log in (state.spent, state.authenticated):
-                    for stale in [key for key, stamp in log.items() if stamp < horizon]:
-                        del log[stale]
+                for stale in [key for key, stamp in state.spent.items() if stamp < horizon]:
+                    del state.spent[stale]
+                for stale in [
+                    key for key, pending in state.authenticated.items() if pending.nu < horizon
+                ]:
+                    del state.authenticated[stale]
             state.spent[ticket] = nu
             return True
 
@@ -748,8 +848,9 @@ class ProposedLWEAuthProtocol(AuthProtocol):
                 "Los parámetros de enrollment no coinciden con los del setup."
             )
         matrix, _ = self._proof_matrix(context)
-        secret = sampling.sample_centered_binomial(context.proof_shape, ETA)
-        error = sampling.sample_centered_binomial(context.proof_shape, ETA)
+        proof_eta = context.parameters["eta_proof"]
+        secret = sampling.sample_centered_binomial(context.proof_shape, proof_eta)
+        error = sampling.sample_centered_binomial(context.proof_shape, proof_eta)
         public_vector = (                                                  # t = A' s + e
             module.matrix_vector(matrix, secret, PROOF_MODULUS) + error
         ) % PROOF_MODULUS
@@ -757,8 +858,8 @@ class ProposedLWEAuthProtocol(AuthProtocol):
         return (
             {"t": codec.encode_bytes(public_raw)},
             {
-                "s": codec.encode_packed(secret + ETA, _SECRET_RANGE),
-                "e": codec.encode_packed(error + ETA, _SECRET_RANGE),
+                "s": codec.encode_packed(secret + proof_eta, 2 * proof_eta + 1),
+                "e": codec.encode_packed(error + proof_eta, 2 * proof_eta + 1),
                 "public_key_digest": codec.encode_bytes(
                     _digest(_DOMAIN, b"public-key", public_raw)
                 ),
@@ -799,7 +900,10 @@ class ProposedLWEAuthProtocol(AuthProtocol):
             ticket,
             nu,
         )
-        return self._seal_token(context, response, challenge_seed, ticket, nu)
+        token, _ = self._seal_token(
+            context, response, challenge_seed, ticket, nu, public_key_digest
+        )
+        return token
 
     def verify_response(
         self,
@@ -816,8 +920,14 @@ class ProposedLWEAuthProtocol(AuthProtocol):
         token = self._open_token(context, state, response)                        # tex:138-150
         if token is None:
             return False
-        # Contract binding: the token must answer the challenge this verifier issued.
-        if not hmac.compare_digest(token.ticket, ticket) or token.nu != nu:
+        # Contract binding: the token must answer the challenge this verifier issued,
+        # for the identity whose key the caller supplied. A deployment would look t up
+        # by the id_C it has just decrypted (reading 12); here both must agree.
+        if (
+            not hmac.compare_digest(token.ticket, ticket)
+            or token.nu != nu
+            or not hmac.compare_digest(token.client_id, public_key_digest)
+        ):
             return False
 
         now = self._now_ms()
@@ -847,85 +957,129 @@ class ProposedLWEAuthProtocol(AuthProtocol):
             return False
 
         with state.lock:
-            state.authenticated[token.ticket] = token.nu
+            state.authenticated[token.ticket] = _PendingSession(
+                nu=token.nu,
+                client_share=token.client_share,
+                reply_key=self._reply_key(token.token_key),
+            )
         return True
 
     # -- session key agreement (manuscript Phase 4, outside the contract) ----------
 
-    def generate_key_agreement_share(
+    def solve_challenge_with_key_agreement(
         self,
         system_parameters: SerializedData,
-        role: str,
+        private_key: SerializedData,
+        challenge: SerializedData,
     ) -> tuple[SerializedData, SerializedData]:
-        """Return (public share {"b"}, secret {"s"}) for ``role`` "client" or "server".
+        """Like ``solve_challenge``, and also start the session-key agreement.
 
-        The client share is b_C = A s_C + e_C and the server share
-        b_S = A^T s_S + e_S', with CBD(eta) secrets and errors over q = 3329, as
-        in the source the manuscript cites; the manuscript itself does not
-        define them.
+        The client share b_C = A s_C + e_C travels inside tok2, next to the proof,
+        so it is encrypted and authenticated under the token key K (reading 10).
+        Returns (token, client session); the client session {"s": s_C, "k": key
+        of the server reply} is secret and never leaves the client.
         """
-        if role not in ("client", "server"):
-            raise InvalidProtocolDataError("'role' debe ser 'client' o 'server'.")
         context = self._context(system_parameters)
-        matrix = self._agreement_matrix(context)
-        if role == "server":
-            matrix = module.transpose(matrix)
-        secret = sampling.sample_centered_binomial((RANK, DEGREE), ETA)
-        error = sampling.sample_centered_binomial((RANK, DEGREE), ETA)
-        share = (module.matrix_vector(matrix, secret, MODULUS) + error) % MODULUS
-        return (
-            {"b": codec.encode_packed(share, MODULUS)},
-            {"s": codec.encode_packed(secret % MODULUS, MODULUS)},
+        secret, error, public_key_digest = self._witness(context, private_key)
+        ticket, nu = self._parse_challenge(challenge)
+        matrix, matrix_digest = self._proof_matrix(context)
+        response, challenge_seed, _ = self._prove(
+            context,
+            matrix,
+            matrix_digest,
+            secret,
+            error,
+            public_key_digest,
+            ticket,
+            nu,
         )
+        client_share, client_secret = self._agreement_share(context, "client")
+        token, token_key = self._seal_token(
+            context, response, challenge_seed, ticket, nu, public_key_digest, client_share
+        )
+        return token, {
+            "s": codec.encode_packed(client_secret % MODULUS, MODULUS),
+            "k": codec.encode_bytes(self._reply_key(token_key)),
+        }
 
-    def generate_reconciliation_hint(
+    def generate_session_reply(
         self,
         system_parameters: SerializedData,
         challenge: SerializedData,
-        client_share: SerializedData,
-        server_secret: SerializedData,
     ) -> tuple[SerializedData, bytes]:
-        """Server side: return (hint {"v"}, K_S) for an authenticated session.
+        """Server side, after ``verify_response`` accepted a token that carried b_C.
 
-        Only a ticket accepted by ``verify_response`` can obtain a hint, and
-        only once (tex:198, tex:250-259). The hint is public; K_S is not.
+        Draws b_S = A^T s_S + e_S, computes theta_S = b_C^T s_S + e*_S, the key
+        bits K_S = round2(theta_S) and the hint v = cross2(theta_S), and returns
+        ({"reply": (b_S, v) sealed under the key derived from K}, K_S). One reply
+        per accepted ticket (tex:198, tex:250-259); the reply is not secret, K_S is.
         """
         context = self._context(system_parameters)
         state = _KEYSTORE.get(context.verifier_key_id)
         ticket, _ = self._parse_challenge(challenge)
-        share = self._share(client_share, "la cuota del cliente")
-        secret = self._small_vector(server_secret, "el secreto del servidor")
         with state.lock:
-            if state.authenticated.pop(ticket, None) is None:
-                raise InvalidProtocolDataError(
-                    "El ticket no corresponde a una sesión autenticada pendiente de pista."
-                )
-        error = sampling.sample_centered_binomial((DEGREE,), ETA)
-        base = (module.inner_product(share, secret, MODULUS) + error) % MODULUS    # w_B  tex:250-253
-        session_key = reconciliation.modular_round(base, MODULUS)                 # K_S  tex:255-258
+            pending = state.authenticated.pop(ticket, None)
+        if pending is None:
+            raise InvalidProtocolDataError(
+                "El ticket no corresponde a una sesión autenticada pendiente de respuesta."
+            )
+        if pending.client_share is None:
+            raise InvalidProtocolDataError(
+                "El token aceptado no incluía la cuota del cliente: esa sesión no pidió "
+                "acuerdo de clave."
+            )
+        server_share, server_secret = self._agreement_share(context, "server")
+        extra_error = sampling.sample_centered_binomial((DEGREE,), ETA)           # e*_S
+        base = (                                                                  # theta_S
+            module.inner_product(pending.client_share, server_secret, MODULUS) + extra_error
+        ) % MODULUS
+        session_key = reconciliation.modular_round(base, MODULUS)                 # K_S
         hint = reconciliation.cross_round(base, MODULUS)                          # v
-        return (
-            {"v": codec.encode_bytes(reconciliation.bits_to_bytes(hint))},
-            reconciliation.bits_to_bytes(session_key),
+        sealed = token_hiding.seal_symmetric(
+            pending.reply_key,
+            codec.pack_coefficients(server_share, MODULUS)
+            + reconciliation.bits_to_bytes(hint),
+            self._reply_associated_data(context, ticket),
         )
+        return {"reply": codec.encode_bytes(sealed)}, reconciliation.bits_to_bytes(session_key)
 
     def reconcile_session_key(
         self,
         system_parameters: SerializedData,
-        server_share: SerializedData,
-        client_secret: SerializedData,
-        hint: SerializedData,
+        challenge: SerializedData,
+        reply: SerializedData,
+        client_session: SerializedData,
     ) -> bytes:
-        """Client side: return K_C = rec(b_S^T s_C, v) (tex:263-266)."""
-        self._context(system_parameters)
-        share = self._share(server_share, "la cuota del servidor")
-        secret = self._small_vector(client_secret, "el secreto del cliente")
-        hint = _require_mapping(hint, "La pista")
-        hint_bits = reconciliation.bytes_to_bits(
-            codec.decode_fixed_bytes(_field(hint, "v", "la pista"), "v", HINT_BYTES),
-            DEGREE,
+        """Client side: open the server reply and return K_C = rec(b_S^T s_C, v).
+
+        A reply that does not open under the client's key was not produced by the
+        verifier that decrypted tok1, and is rejected.
+        """
+        context = self._context(system_parameters)
+        ticket, _ = self._parse_challenge(challenge)
+        client_session = _require_mapping(client_session, "La sesión del cliente")
+        secret = self._small_vector(client_session, "la sesión del cliente")
+        reply_key = codec.decode_fixed_bytes(
+            _field(client_session, "k", "la sesión del cliente"), "k", DIGEST_BYTES
         )
-        base = module.inner_product(share, secret, MODULUS)                       # w_A
+        reply = _require_mapping(reply, "La respuesta del servidor")
+        sealed = codec.decode_fixed_bytes(
+            _field(reply, "reply", "la respuesta del servidor"),
+            "reply",
+            token_hiding.sealed_length(REPLY_BYTES),
+        )
+        plaintext = token_hiding.open_symmetric(
+            reply_key, sealed, self._reply_associated_data(context, ticket)
+        )
+        if plaintext is None:
+            raise InvalidProtocolDataError(
+                "La respuesta del servidor no se pudo autenticar con la clave del token."
+            )
+        server_share = codec.unpack_coefficients(
+            plaintext[:SHARE_BYTES], "b", (RANK, DEGREE), MODULUS
+        )
+        hint_bits = reconciliation.bytes_to_bits(plaintext[SHARE_BYTES:], DEGREE)
+        base = module.inner_product(server_share, secret, MODULUS)                # theta_C
         return reconciliation.bits_to_bytes(
             reconciliation.reconcile(base, hint_bits, MODULUS)
         )

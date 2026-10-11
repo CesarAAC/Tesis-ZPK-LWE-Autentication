@@ -6,27 +6,27 @@ La autenticación de usuarios constituye uno de los problemas más complejos den
 A pesar de la evolución en las tecnologías de verificación mediante contraseñas de un solo uso (\textit{One-Time Passwords}, OTP), esquemas de doble factor basados en los estándares de la alianza FIDO y técnicas biométricas, estas alternativas aún presentan limitaciones considerables \cite{fido_alliance}:
 \begin{itemize}
     \item \textbf{Contraseñas tradicionales:} Constituyen un mecanismo poco adecuado para las capacidades cognitivas humanas y obligan al usuario a ceder la totalidad de su secreto al sistema verificador.
-    \item \textbf{Autenticación biométrica:} Involucra información de identificación personal no modificable, lo que genera objeciones significativas en materia de privacidad y cumplimiento normativo .
-    \item \textbf{Esquemas de doble factor en servicios financieros:} En escenarios como redes de cajeros automáticos (ATM), la combinación de la tarjeta y el PIN implica entregar la totalidad del secreto a terceros y operadores de redes intermedias (e.g., Cirrus, Visa, MasterCard), comprometiendo la soberanía de los datos del usuario.
+    \item \textbf{Autenticación biométrica:} Involucra información de identificación personal no modificable, lo que genera objeciones significativas en materia de privacidad y cumplimiento normativo.
+    \item \textbf{Esquemas de doble factor con intermediarios:} Cuando la autenticación atraviesa dispositivos o nodos intermedios en redes distribuidas, la combinación de la credencial y un segundo factor (por ejemplo, un PIN) tradicionalmente implica entregar información sensible a esos intermediarios, comprometiendo la soberanía de los datos del usuario.
 \end{itemize}
 
 \subsection{Contexto de la Situación}
-El panorama actual de la seguridad de la información se encuentra condicionado por dos dinámicas críticas: la necesidad de proteger la identidad sin entregar credenciales sensibles y la inminente llegada de la computación cuántica 
+El panorama actual de la seguridad de la información se encuentra condicionado por dos dinámicas críticas: la necesidad de proteger la identidad sin entregar credenciales sensibles y la inminente llegada de la computación cuántica.
 
-Por una parte, la autenticación convencional exige transmitir secretos legibles o equivalentes a través de nodos intermedios. Las Pruebas de Conocimiento Cero (\textit{Zero-Knowledge Proofs}, ZKP) ofrecen una alternativa criptográfica que permite a una parte probadora ($P$) demostrar a un verificador ($V$) que posee cierta información privada sin revelar un solo bit de dicho secreto.
+Por una parte, la autenticación convencional exige transmitir secretos legibles o equivalentes a través de nodos intermedios. Las Pruebas de Conocimiento Cero (\textit{Zero-Knowledge Proofs}, ZKP) ofrecen una alternativa criptográfica que permite a una parte probadora ($P$) demostrar a un verificador ($V$) que posee cierta información privada sin revelar nada sobre ese secreto más allá de que la afirmación es verdadera.
 
-Por otra parte, la ejecución de algoritmos como el de Shor y Grover en computadores cuánticos amenaza la seguridad de los esquemas criptográficos tradicionales . Al transformar las funciones clásicas de una sola vía (como el logaritmo discreto, la factorización de enteros o el isomorfismo de grafos) en funciones fácilmente invertibles, la computación cuántica dejará inútiles los protocolos clásicos, haciendo imperativa la migración hacia primitivas resistentes a capacidades cuánticas de ataque (\textit{quantum-safe}).
+Por otra parte, la ejecución de algoritmos como el de Shor y Grover en computadores cuánticos amenaza la seguridad de los esquemas criptográficos tradicionales. Al transformar las funciones clásicas de una sola vía basadas en el logaritmo discreto y en la factorización de enteros en funciones fácilmente invertibles, la computación cuántica dejará inútiles los protocolos clásicos, haciendo imperativa la migración hacia primitivas resistentes a capacidades cuánticas de ataque (\textit{quantum-safe}).
 
 \subsection{Justificación}
 Frente a la vulnerabilidad de las credenciales tradicionales y la amenaza de adversarios cuánticos, surge la necesidad de contar con esquemas de autenticación que garanticen la soberanía de los datos del usuario y la robustez técnica frente a ataques clásicos y cuánticos.
 
-Los problemas matemáticos basados en retículas (\textit{lattices}), en particular, el problema \textit{Learning with Errors} (LWE) con distribución Gaussiana discreta permite construir funciones de una sola vía respaldadas por una reducción de seguridad del peor caso al caso promedio (\textit{worst-case to average-case reduction}). Esta propiedad garantiza que resolver una instancia aleatoria del sistema sea tan difícil como los problemas de retículos más complejos en el peor caso, manteniendo el cálculo inverso computacionalmente inviable tanto para la arquitectura tradicional Von-Neumann como para ordenadores cuánticos.
+Los problemas matemáticos basados en retículos (\textit{lattices}), en particular el problema \textit{Learning with Errors} (LWE) y sus variantes estructuradas, permiten construir funciones de una sola vía respaldadas por una reducción de seguridad del peor caso al caso promedio (\textit{worst-case to average-case reduction}). Para los parámetros que cubre esa reducción, resolver una instancia aleatoria es tan difícil como resolver problemas de retículos en el peor caso, para los que no se conocen algoritmos eficientes clásicos ni cuánticos; para los parámetros concretos que se usan en la práctica, la seguridad se estima a partir del costo de los mejores ataques conocidos (Sección~\ref{sec:estimacion}).
 
 
 La integración de las Pruebas de Conocimiento Cero (ZKP) con la solidez matemática de LWE atiende simultáneamente ambas problemáticas:
 \begin{enumerate}
     \item Resuelve la exposición de secretos al verificar la identidad del usuario sin revelar sus credenciales.
-    \item Garantiza la seguridad del canal y la autenticación a largo plazo contra supercomputadoras cuánticas gracias a la complejidad multidimensional del problema LWE.
+    \item Ofrece resistencia frente a adversarios con computadores cuánticos, apoyada en la dureza estimada del problema LWE y de sus variantes.
 \end{enumerate}
 
 \subsection{Objetivos}

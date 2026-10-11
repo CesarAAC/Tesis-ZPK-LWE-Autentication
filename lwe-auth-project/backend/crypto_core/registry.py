@@ -91,10 +91,10 @@ _PROTOCOL_SPECS: tuple[ProtocolSpec, ...] = (
         declared_dependencies=("numpy", "cryptography"),
         implementation_factory=ProposedLWEAuthProtocol,
         development_note=(
-            "PQLite-Auth v2 con módulo dual: prueba Fiat-Shamir con abortos (NIZK en "
+            "ML-ZKAuth con módulo dual: prueba Fiat-Shamir con abortos (NIZK en "
             "ROM) sobre q' = 8380417 con bits altos/bajos; token ML-KEM-768 + "
             "AES-256-GCM, tickets de un solo uso y acuerdo de clave sobre q = 3329. "
-            "La dureza con rango de prueba 3 debe revisarse; ver README."
+            "Rango de prueba 4 y CBD(6): 2^128.2 en Core-SVP; ver README."
         ),
     ),
 )

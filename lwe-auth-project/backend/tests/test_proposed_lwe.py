@@ -1,4 +1,4 @@
-"""Tests for PQLite-Auth v2 (``proposed_lwe``) in its dual-modulus form.
+"""Tests for ML-ZKAuth (``proposed_lwe``) in its dual-modulus form.
 
 Grouped as: parameters, primitives (with the high/low-bits decomposition), the
 behaviours required from the authentication flow, the rejection sampling, the
@@ -36,6 +36,8 @@ QP = proposed_lwe.PROOF_MODULUS
 D = proposed_lwe.DEGREE
 K = proposed_lwe.RANK
 ETA = proposed_lwe.ETA
+ETA_PROOF = proposed_lwe.DEFAULT_PROOF_ETA
+BETA = ETA_PROOF * proposed_lwe.DEFAULT_KAPPA
 GAMMA1 = proposed_lwe.DEFAULT_GAMMA1
 GAMMA2 = proposed_lwe.DEFAULT_GAMMA2
 RESIDUES = np.arange(Q)
@@ -194,11 +196,19 @@ class _Deployment(unittest.TestCase):
         )
         return response, seed, self.protocol._challenge_polynomial(context, seed)
 
-    def _token(self, challenge, response, seed):
+    def _client_id(self) -> bytes:
+        """id_C = H(t), the identifier the client puts inside tok2."""
+        context = self.protocol._context(self.system_parameters)
+        return self.protocol._public_vector(context, self.public_key)[0]
+
+    def _token(self, challenge, response, seed, client_id=None):
         """Seal an arbitrary (z, c~) for this verifier, as any sender can."""
         context = self.protocol._context(self.system_parameters)
         ticket, nu = self.protocol._parse_challenge(challenge)
-        return self.protocol._seal_token(context, response, seed, ticket, nu)
+        token, _ = self.protocol._seal_token(
+            context, response, seed, ticket, nu, client_id or self._client_id()
+        )
+        return token
 
     def _rebuilt(self, response, challenge_polynomial) -> np.ndarray:
         """A' z - c t mod q', the value whose high bits the verifier hashes."""
@@ -302,8 +312,10 @@ class ParameterTests(unittest.TestCase):
         parameters = self.protocol.resolve_parameters()
         # Chosen by the authors on 2026-10-04; the manuscript's k = 3 stays available.
         self.assertEqual(parameters["k_proof"], 4)
+        # Chosen by the authors on 2026-10-04 for 128-bit Core-SVP; the transport layer keeps eta = 2.
+        self.assertEqual((parameters["eta_proof"], parameters["eta"]), (6, 2))
         self.assertEqual(parameters["kappa"], 23)
-        self.assertEqual(parameters["beta"], ETA * 23)
+        self.assertEqual(parameters["beta"], 6 * 23)
         self.assertEqual(parameters["gamma1"], 1 << 17)
         self.assertEqual(parameters["gamma2"], (QP - 1) // 88)
         self.assertEqual(parameters["time_window_seconds"], 300)
@@ -312,9 +324,9 @@ class ParameterTests(unittest.TestCase):
         self.assertLess(proposed_lwe.challenge_space_bits(D, 22), 128)
 
     def test_beta_is_derived_from_the_challenge_weight(self) -> None:
-        self.assertEqual(self.protocol.resolve_parameters({"kappa": 30})["beta"], 60)
-        self.assertEqual(self.protocol.resolve_parameters({"beta": 46})["beta"], 46)
-        for overrides in ({"beta": 47}, {"beta": 46.0}, {"kappa": 30, "beta": 46}):
+        self.assertEqual(self.protocol.resolve_parameters({"kappa": 30, "eta_proof": 2})["beta"], 60)
+        self.assertEqual(self.protocol.resolve_parameters({"beta": 138})["beta"], 138)
+        for overrides in ({"beta": 139}, {"beta": 138.0}, {"eta_proof": 2, "beta": 138}):
             with self.subTest(overrides=overrides):
                 with self.assertRaises(InvalidProtocolDataError):
                     self.protocol.resolve_parameters(overrides)
@@ -347,6 +359,9 @@ class ParameterTests(unittest.TestCase):
             {"kappa": 257},
             {"k_proof": 2},
             {"k_proof": 9},
+            {"eta_proof": 0},
+            {"eta_proof": 9},
+            {"eta_proof": 6.0},
             {"k_proof": 3.0},
             {"gamma1": 46},
             {"gamma1": 1 << 20},
@@ -444,7 +459,7 @@ class PrimitiveTests(unittest.TestCase):
             "transport coefficients": (Q, 12, [0, 1, Q - 1, 2048]),
             "proof coefficients": (QP, 23, [0, 1, QP - 1, 1 << 22]),
             "responses": (2 * GAMMA1, 18, [0, 1, 2 * GAMMA1 - 1, GAMMA1]),
-            "secrets": (2 * ETA + 1, 3, [0, 1, 2 * ETA, ETA]),
+            "secrets": (2 * ETA_PROOF + 1, 4, [0, 1, 2 * ETA_PROOF, ETA_PROOF]),
             "high bits": ((QP - 1) // (2 * GAMMA2), 6, [0, 1, 43, 22]),
         }
         for label, (modulus, bits, edge_values) in cases.items():
@@ -581,7 +596,7 @@ class DecompositionTests(unittest.TestCase):
     """HighBits / LowBits over the whole of Z_q' for the default rounding step."""
 
     alpha = 2 * GAMMA2
-    beta = ETA * proposed_lwe.DEFAULT_KAPPA
+    beta = BETA
 
     def _all_residues(self):
         chunk = 1 << 20
@@ -717,17 +732,14 @@ class AuthenticationFlowTests(_Deployment):
         challenge, response = self._authenticate()
         self.assertTrue(self._verify(challenge, response))
 
-        client_share, client_secret = self.protocol.generate_key_agreement_share(
-            self.system_parameters, "client"
+        challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
+        token, client_session = self.protocol.solve_challenge_with_key_agreement(
+            self.system_parameters, self.private_key, challenge
         )
-        server_share, server_secret = self.protocol.generate_key_agreement_share(
-            self.system_parameters, "server"
-        )
-        hint, server_key = self.protocol.generate_reconciliation_hint(
-            self.system_parameters, challenge, client_share, server_secret
-        )
+        self.assertTrue(self._verify(challenge, token))
+        reply, server_key = self.protocol.generate_session_reply(self.system_parameters, challenge)
         client_key = self.protocol.reconcile_session_key(
-            self.system_parameters, server_share, client_secret, hint
+            self.system_parameters, challenge, reply, client_session
         )
         self.assertEqual(client_key, server_key)
         self.assertEqual(len(client_key) * 8, 256)
@@ -760,8 +772,8 @@ class AuthenticationFlowTests(_Deployment):
         np.testing.assert_array_equal(
             module.centered(public_vector - module.matrix_vector(matrix, secret, QP), QP), error
         )
-        self.assertLessEqual(int(np.abs(error).max()), ETA)
-        self.assertLessEqual(int(np.abs(secret).max()), ETA)
+        self.assertLessEqual(int(np.abs(error).max()), ETA_PROOF)
+        self.assertLessEqual(int(np.abs(secret).max()), ETA_PROOF)
 
     def test_proof_and_key_agreement_matrices_come_from_unrelated_streams(self) -> None:
         context, proof_matrix, _, _, _, _ = self._internals()
@@ -834,6 +846,22 @@ class AuthenticationFlowTests(_Deployment):
         self.assertFalse(self._verify(challenge, response))
         challenge, response = self._authenticate(private_key=mixed)
         self.assertFalse(self._verify(challenge, response, other_public))
+
+    def test_client_identifier_travels_inside_the_token_and_must_match_the_key(self) -> None:
+        # D1: id_C = H(t) is sealed in tok2, so the terminal never sees it, and a
+        # token naming another identity is rejected without spending the ticket.
+        challenge, response = self._authenticate()
+        wire = base64.b64decode(response["tok1"]) + base64.b64decode(response["tok2"])
+        self.assertNotIn(self._client_id(), wire)
+        self.assertEqual(self._client_id(), base64.b64decode(self.private_key["public_key_digest"]))
+
+        challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
+        response, seed, _ = self._proof(challenge)
+        other_public, _ = self.protocol.generate_keypair(self.system_parameters, **self.parameters)
+        context = self.protocol._context(self.system_parameters)
+        other_id = self.protocol._public_vector(context, other_public)[0]
+        self.assertFalse(self._verify(challenge, self._token(challenge, response, seed, other_id)))
+        self.assertTrue(self._verify(challenge, self._token(challenge, response, seed)))
 
     # -- replay ------------------------------------------------------------------
 
@@ -946,10 +974,12 @@ class AuthenticationFlowTests(_Deployment):
         context = self.protocol._context(self.system_parameters)
         guess = {
             "s": codec.encode_packed(
-                sampling.sample_centered_binomial((self.rank, D), ETA) + ETA, 2 * ETA + 1
+                sampling.sample_centered_binomial((self.rank, D), ETA_PROOF) + ETA_PROOF,
+                2 * ETA_PROOF + 1,
             ),
             "e": codec.encode_packed(
-                sampling.sample_centered_binomial((self.rank, D), ETA) + ETA, 2 * ETA + 1
+                sampling.sample_centered_binomial((self.rank, D), ETA_PROOF) + ETA_PROOF,
+                2 * ETA_PROOF + 1,
             ),
             "public_key_digest": codec.encode_bytes(
                 self.protocol._public_vector(context, self.public_key)[0]
@@ -966,9 +996,9 @@ class AuthenticationFlowTests(_Deployment):
         token = self._token(challenge, response, seed)
         tok1, tok2 = base64.b64decode(token["tok1"]), base64.b64decode(token["tok2"])
         self.assertEqual(len(tok1), 1088)
-        # z at 18 bits per coefficient, c~, ticket, nu; no commitment.
-        self.assertEqual(len(tok2), 12 + (2304 + 32 + 32 + 8) + 16)
-        self.assertEqual(len(tok1) + len(tok2), 3492)
+        # z at 18 bits per coefficient, c~, ticket, nu, id_C; no commitment.
+        self.assertEqual(len(tok2), 12 + (2304 + 32 + 32 + 8 + 32) + 16)
+        self.assertEqual(len(tok1) + len(tok2), 3524)
 
         wire = tok1 + tok2
         for secret_part in (
@@ -1006,7 +1036,7 @@ class AuthenticationFlowTests(_Deployment):
         challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
         ticket, nu = self.protocol._parse_challenge(challenge)
         # Every coefficient decodes to gamma1 - 1, which is above gamma1 - beta.
-        payload = b"\xff" * 2304 + bytes(32) + ticket + nu.to_bytes(8, "big")
+        payload = b"\xff" * 2304 + bytes(32) + ticket + nu.to_bytes(8, "big") + self._client_id()
         self.assertEqual(len(payload), context.payload_bytes)
         tok1, tok2 = token_hiding.seal(
             context.verifier_public_key,
@@ -1058,11 +1088,11 @@ class AuthenticationFlowTests(_Deployment):
         )
 
     def test_key_sizes(self) -> None:
-        # t at 23 bits per coefficient; s and e at 3 bits (values eta + coefficient).
+        # t at 23 bits per coefficient; s and e at 4 bits (values eta' + coefficient, eta' = 6).
         self.assertEqual(len(base64.b64decode(self.public_key["t"])), 4 * 256 * 23 // 8)
         self.assertEqual(len(base64.b64decode(self.public_key["t"])), 2944)
-        self.assertEqual(len(base64.b64decode(self.private_key["s"])), 384)
-        self.assertEqual(len(base64.b64decode(self.private_key["e"])), 384)
+        self.assertEqual(len(base64.b64decode(self.private_key["s"])), 512)
+        self.assertEqual(len(base64.b64decode(self.private_key["e"])), 512)
         self.assertEqual(set(self.private_key), {"s", "e", "public_key_digest"})
         self.assertEqual(set(self.public_key), {"t"})
 
@@ -1111,9 +1141,9 @@ class AuthenticationFlowTests(_Deployment):
 
     def test_private_key_outside_the_cbd_range_is_rejected(self) -> None:
         challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
-        too_large = np.full((self.rank, D), ETA, dtype=np.int64)
-        too_large[0, 0] = 2 * ETA + 1  # encodes the coefficient eta + 1
-        outside = codec.encode_bytes(codec.pack_coefficients(too_large, 8))
+        too_large = np.full((self.rank, D), ETA_PROOF, dtype=np.int64)
+        too_large[0, 0] = 2 * ETA_PROOF + 1  # encodes the coefficient eta' + 1
+        outside = codec.encode_bytes(codec.pack_coefficients(too_large, 16))
         for private_key in (
             dict(self.private_key, s=outside),
             dict(self.private_key, e=outside),
@@ -1233,7 +1263,7 @@ class RejectionSamplingTests(_Deployment):
 class NarrowMaskTests(_Deployment):
     """gamma1 = 2^14 at rank 3: about one attempt in thirteen is released, and all of them verify."""
 
-    overrides = {"gamma1": 1 << 14, "k_proof": 3}
+    overrides = {"gamma1": 1 << 14, "k_proof": 3, "eta_proof": 2}
 
     def test_honest_acceptance_stays_total_when_most_attempts_abort(self) -> None:
         self.assertLess(
@@ -1251,13 +1281,13 @@ class NarrowMaskTests(_Deployment):
 
     def test_response_uses_fifteen_bits_per_coefficient(self) -> None:
         _, response = self._authenticate()
-        self.assertEqual(len(base64.b64decode(response["tok2"])), 12 + (1440 + 72) + 16)
+        self.assertEqual(len(base64.b64decode(response["tok2"])), 12 + (1440 + 72 + 32) + 16)
 
 
 class NonPowerOfTwoMaskTests(_Deployment):
     """gamma1 = 100000: some 18-bit patterns are not encodings of any response."""
 
-    overrides = {"gamma1": 100_000}
+    overrides = {"gamma1": 100_000, "eta_proof": 2}
 
     def test_honest_authentication(self) -> None:
         for _ in range(10):
@@ -1267,7 +1297,13 @@ class NonPowerOfTwoMaskTests(_Deployment):
         context = self.protocol._context(self.system_parameters)
         challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
         ticket, nu = self.protocol._parse_challenge(challenge)
-        payload = b"\xff" * context.response_bytes + bytes(32) + ticket + nu.to_bytes(8, "big")
+        payload = (
+            b"\xff" * context.response_bytes
+            + bytes(32)
+            + ticket
+            + nu.to_bytes(8, "big")
+            + self._client_id()
+        )
         tok1, tok2 = token_hiding.seal(
             context.verifier_public_key,
             payload,
@@ -1285,33 +1321,30 @@ class ProofRankThreeTests(_Deployment):
     def test_honest_authentication_and_session_key(self) -> None:
         for _ in range(20):
             self.assertTrue(self._verify(*self._authenticate()))
-        challenge, response = self._authenticate()
-        self.assertTrue(self._verify(challenge, response))
-        client_share, client_secret = self.protocol.generate_key_agreement_share(
-            self.system_parameters, "client"
+        challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
+        token, client_session = self.protocol.solve_challenge_with_key_agreement(
+            self.system_parameters, self.private_key, challenge
         )
-        server_share, server_secret = self.protocol.generate_key_agreement_share(
-            self.system_parameters, "server"
-        )
-        hint, server_key = self.protocol.generate_reconciliation_hint(
-            self.system_parameters, challenge, client_share, server_secret
-        )
+        self.assertTrue(self._verify(challenge, token))
+        reply, server_key = self.protocol.generate_session_reply(self.system_parameters, challenge)
         self.assertEqual(
             self.protocol.reconcile_session_key(
-                self.system_parameters, server_share, client_secret, hint
+                self.system_parameters, challenge, reply, client_session
             ),
             server_key,
         )
-        # The key agreement stays at the manuscript's rank and modulus.
-        self.assertEqual(len(base64.b64decode(client_share["b"])), 1152)
+        # The key agreement stays at the manuscript's rank and modulus: b_C adds 1152 bytes.
+        self.assertEqual(
+            len(base64.b64decode(token["tok2"])), 12 + (1728 + 72 + 32 + 1152) + 16
+        )
 
     def test_sizes_shrink_with_the_rank(self) -> None:
         _, response = self._authenticate()
         self.assertEqual(len(base64.b64decode(self.public_key["t"])), 2208)
-        self.assertEqual(len(base64.b64decode(self.private_key["s"])), 288)
+        self.assertEqual(len(base64.b64decode(self.private_key["s"])), 384)
         self.assertEqual(
             len(base64.b64decode(response["tok1"])) + len(base64.b64decode(response["tok2"])),
-            1088 + 12 + (1728 + 72) + 16,
+            1088 + 12 + (1728 + 72 + 32) + 16,
         )
 
     def test_forgeries_and_keys_of_another_rank_are_rejected(self) -> None:
@@ -1336,137 +1369,158 @@ class ProofRankThreeTests(_Deployment):
 
 
 class SessionKeyAgreementTests(_Deployment):
-    def _authenticated_challenge(self):
-        challenge, response = self._authenticate()
-        self.assertTrue(self._verify(challenge, response))
-        return challenge
+    """Peikert key agreement bound to the authentication (D2): b_C inside tok2,
+    (b_S, v) sealed under a key derived from the token key K."""
 
-    def _shares(self):
-        client = self.protocol.generate_key_agreement_share(self.system_parameters, "client")
-        server = self.protocol.generate_key_agreement_share(self.system_parameters, "server")
-        return client, server
+    def _session(self):
+        """One accepted token that carries b_C: (challenge, token, client session)."""
+        challenge = self.protocol.generate_challenge(self.system_parameters, self.public_key)
+        token, client_session = self.protocol.solve_challenge_with_key_agreement(
+            self.system_parameters, self.private_key, challenge
+        )
+        return challenge, token, client_session
+
+    def _accepted_session(self):
+        challenge, token, client_session = self._session()
+        self.assertTrue(self._verify(challenge, token))
+        return challenge, token, client_session
+
+    def _reconcile(self, challenge, reply, client_session) -> bytes:
+        return self.protocol.reconcile_session_key(
+            self.system_parameters, challenge, reply, client_session
+        )
 
     def test_both_sides_agree_over_many_sessions(self) -> None:
         keys = set()
         for _ in range(30):
-            challenge = self._authenticated_challenge()
-            (client_share, client_secret), (server_share, server_secret) = self._shares()
-            hint, server_key = self.protocol.generate_reconciliation_hint(
-                self.system_parameters, challenge, client_share, server_secret
+            challenge, _, client_session = self._accepted_session()
+            reply, server_key = self.protocol.generate_session_reply(
+                self.system_parameters, challenge
             )
-            self.assertEqual(
-                self.protocol.reconcile_session_key(
-                    self.system_parameters, server_share, client_secret, hint
-                ),
-                server_key,
-            )
+            self.assertEqual(self._reconcile(challenge, reply, client_session), server_key)
             keys.add(server_key)
         self.assertEqual(len(keys), 30)
 
-    def test_shares_live_in_the_transport_modulus(self) -> None:
-        (client_share, client_secret), (server_share, _) = self._shares()
-        for share in (client_share, server_share):
-            raw = base64.b64decode(share["b"])
-            self.assertEqual(len(raw), K * D * 12 // 8)
-            self.assertLess(int(codec.unpack_coefficients(raw, "b", (K, D), Q).max()), Q)
-        self.assertEqual(len(base64.b64decode(client_secret["s"])), 1152)
-
-    def test_hint_is_exactly_32_bytes_and_serializable(self) -> None:
-        challenge = self._authenticated_challenge()
-        (client_share, _), (_, server_secret) = self._shares()
-        hint, server_key = self.protocol.generate_reconciliation_hint(
-            self.system_parameters, challenge, client_share, server_secret
+    def test_client_share_travels_encrypted_inside_the_token(self) -> None:
+        challenge, token, client_session = self._session()
+        tok2 = base64.b64decode(token["tok2"])
+        self.assertEqual(len(tok2), 12 + (2304 + 32 + 32 + 8 + 32 + K * D * 12 // 8) + 16)
+        self.assertEqual(len(base64.b64decode(token["tok1"])) + len(tok2), 4676)
+        self.assertEqual(set(client_session), {"s", "k"})
+        self.assertEqual(len(base64.b64decode(client_session["s"])), 1152)
+        self.assertEqual(len(base64.b64decode(client_session["k"])), 32)
+        # The verifier recovers b_C from tok2; its bytes never appear on the wire.
+        self.assertTrue(self._verify(challenge, token))
+        context = self.protocol._context(self.system_parameters)
+        state = proposed_lwe._KEYSTORE.get(context.verifier_key_id)
+        ticket, _ = self.protocol._parse_challenge(challenge)
+        client_share = state.authenticated[ticket].client_share
+        self.assertEqual(client_share.shape, (K, D))
+        self.assertLess(int(client_share.max()), Q)
+        self.assertNotIn(
+            codec.pack_coefficients(client_share, Q)[:32],
+            base64.b64decode(token["tok1"]) + tok2,
         )
-        self.assertEqual(set(hint), {"v"})
-        self.assertEqual(len(base64.b64decode(hint["v"])), 32)
+
+    def test_reply_is_sealed_and_serializable(self) -> None:
+        challenge, _, client_session = self._accepted_session()
+        reply, server_key = self.protocol.generate_session_reply(self.system_parameters, challenge)
+        self.assertEqual(set(reply), {"reply"})
+        # nonce, b_S at 12 bits per coefficient, v (32 bytes), GCM tag.
+        self.assertEqual(len(base64.b64decode(reply["reply"])), 12 + 1152 + 32 + 16)
         self.assertEqual(len(server_key), 32)
-        self.assertEqual(json.loads(canonical_json_bytes(hint).decode("utf-8")), hint)
+        self.assertEqual(json.loads(canonical_json_bytes(reply).decode("utf-8")), reply)
+        self.assertEqual(self._reconcile(challenge, reply, client_session), server_key)
 
-    def test_hint_requires_a_successful_authentication(self) -> None:
-        (client_share, _), (_, server_secret) = self._shares()
-        unverified, _ = self._authenticate()
+    def test_reply_requires_a_successful_authentication(self) -> None:
+        unverified, _, _ = self._session()
         with self.assertRaises(InvalidProtocolDataError):
-            self.protocol.generate_reconciliation_hint(
-                self.system_parameters, unverified, client_share, server_secret
-            )
+            self.protocol.generate_session_reply(self.system_parameters, unverified)
         _, other_private = self.protocol.generate_keypair(self.system_parameters, **self.parameters)
-        rejected, response = self._authenticate(private_key=other_private)
-        self.assertFalse(self._verify(rejected, response))
-        with self.assertRaises(InvalidProtocolDataError):
-            self.protocol.generate_reconciliation_hint(
-                self.system_parameters, rejected, client_share, server_secret
-            )
-
-    def test_hint_is_issued_once_per_authentication(self) -> None:
-        challenge = self._authenticated_challenge()
-        (client_share, _), (_, server_secret) = self._shares()
-        self.protocol.generate_reconciliation_hint(
-            self.system_parameters, challenge, client_share, server_secret
+        rejected = self.protocol.generate_challenge(self.system_parameters, self.public_key)
+        token, _ = self.protocol.solve_challenge_with_key_agreement(
+            self.system_parameters, other_private, rejected
         )
+        self.assertFalse(self._verify(rejected, token))
         with self.assertRaises(InvalidProtocolDataError):
-            self.protocol.generate_reconciliation_hint(
-                self.system_parameters, challenge, client_share, server_secret
-            )
+            self.protocol.generate_session_reply(self.system_parameters, rejected)
+
+    def test_reply_is_issued_once_per_authentication(self) -> None:
+        challenge, _, _ = self._accepted_session()
+        self.protocol.generate_session_reply(self.system_parameters, challenge)
+        with self.assertRaises(InvalidProtocolDataError):
+            self.protocol.generate_session_reply(self.system_parameters, challenge)
+
+    def test_token_without_a_share_gets_no_reply(self) -> None:
+        challenge, response = self._authenticate()
+        self.assertTrue(self._verify(challenge, response))
+        with self.assertRaises(InvalidProtocolDataError):
+            self.protocol.generate_session_reply(self.system_parameters, challenge)
 
     def test_another_client_secret_does_not_derive_the_session_key(self) -> None:
-        challenge = self._authenticated_challenge()
-        (client_share, _), (server_share, server_secret) = self._shares()
-        _, unrelated_secret = self.protocol.generate_key_agreement_share(
-            self.system_parameters, "client"
+        challenge, _, client_session = self._accepted_session()
+        _, _, unrelated = self._session()
+        reply, server_key = self.protocol.generate_session_reply(self.system_parameters, challenge)
+        # Right reply key, wrong secret: the reply opens but the bits differ.
+        mixed = dict(client_session, s=unrelated["s"])
+        self.assertNotEqual(self._reconcile(challenge, reply, mixed), server_key)
+        # Another session's key does not even open the reply.
+        with self.assertRaises(InvalidProtocolDataError):
+            self._reconcile(challenge, reply, unrelated)
+
+    def test_reply_that_the_verifier_did_not_seal_is_rejected(self) -> None:
+        # Only the verifier that decapsulated tok1 knows K, so a relay cannot answer
+        # in its name or alter (b_S, v) on the way back.
+        challenge, _, client_session = self._accepted_session()
+        reply, _ = self.protocol.generate_session_reply(self.system_parameters, challenge)
+        context = self.protocol._context(self.system_parameters)
+        forged = token_hiding.seal_symmetric(
+            secrets.token_bytes(32),
+            bytes(proposed_lwe.REPLY_BYTES),
+            self.protocol._reply_associated_data(context, base64.b64decode(challenge["ticket"])),
         )
-        hint, server_key = self.protocol.generate_reconciliation_hint(
-            self.system_parameters, challenge, client_share, server_secret
-        )
-        self.assertNotEqual(
-            self.protocol.reconcile_session_key(
-                self.system_parameters, server_share, unrelated_secret, hint
-            ),
-            server_key,
-        )
+        for label, candidate in (
+            ("tampered", {"reply": _flip_first_byte(reply["reply"])}),
+            ("forged", {"reply": codec.encode_bytes(forged)}),
+        ):
+            with self.subTest(reply=label):
+                with self.assertRaises(InvalidProtocolDataError):
+                    self._reconcile(challenge, candidate, client_session)
+        # The reply is bound to its ticket.
+        other = self.protocol.generate_challenge(self.system_parameters, self.public_key)
+        with self.assertRaises(InvalidProtocolDataError):
+            self._reconcile(other, reply, client_session)
 
     def test_noise_between_both_sides_is_far_below_the_reconciliation_bound(self) -> None:
+        context = self.protocol._context(self.system_parameters)
         largest = 0
         for _ in range(20):
-            (client_share, client_secret), (server_share, server_secret) = self._shares()
-            client_value = module.inner_product(
-                self.protocol._share(server_share, "la cuota del servidor"),
-                self.protocol._small_vector(client_secret, "el secreto del cliente"),
-                Q,
-            )
-            server_value = module.inner_product(
-                self.protocol._share(client_share, "la cuota del cliente"),
-                self.protocol._small_vector(server_secret, "el secreto del servidor"),
-                Q,
-            )
+            client_share, client_secret = self.protocol._agreement_share(context, "client")
+            server_share, server_secret = self.protocol._agreement_share(context, "server")
+            client_value = module.inner_product(server_share, client_secret, Q)    # theta_C
+            server_value = module.inner_product(client_share, server_secret, Q)    # theta_S - e*_S
             largest = max(largest, int(np.abs(module.centered(server_value - client_value, Q)).max()))
-        # Standard deviation about sqrt(2 * k * d) = 39; the bound is 415 minus the fresh e_S.
+        # Standard deviation about sqrt(2 * k * d) = 39; the bound is 415 minus the fresh e*_S.
         self.assertLess(largest, 300)
 
-    def test_malformed_shares_secrets_and_hints_are_rejected(self) -> None:
-        challenge = self._authenticated_challenge()
-        (client_share, client_secret), (server_share, server_secret) = self._shares()
-        with self.assertRaises(InvalidProtocolDataError):
-            self.protocol.generate_key_agreement_share(self.system_parameters, "relay")
-        with self.assertRaises(InvalidProtocolDataError):
-            self.protocol.generate_reconciliation_hint(
-                self.system_parameters, challenge, {"b": "AAAA"}, server_secret
-            )
-        # A rejected request must not consume the pending hint.
-        hint, server_key = self.protocol.generate_reconciliation_hint(
-            self.system_parameters, challenge, client_share, server_secret
-        )
-        for bad_hint in ({"v": "AAAA"}, {}, "not-a-mapping"):
-            with self.subTest(hint=str(bad_hint)):
+    def test_malformed_replies_and_sessions_are_rejected(self) -> None:
+        challenge, _, client_session = self._accepted_session()
+        reply, server_key = self.protocol.generate_session_reply(self.system_parameters, challenge)
+        for bad_reply in ({"reply": "AAAA"}, {}, "not-a-mapping"):
+            with self.subTest(reply=str(bad_reply)):
                 with self.assertRaises(InvalidProtocolDataError):
-                    self.protocol.reconcile_session_key(
-                        self.system_parameters, server_share, client_secret, bad_hint
-                    )
-        self.assertEqual(
-            self.protocol.reconcile_session_key(
-                self.system_parameters, server_share, client_secret, hint
-            ),
-            server_key,
-        )
+                    self._reconcile(challenge, bad_reply, client_session)
+        for bad_session in (
+            {"s": client_session["s"]},
+            dict(client_session, k="AAAA"),
+            dict(client_session, s="AAAA"),
+            "not-a-mapping",
+        ):
+            with self.subTest(session=str(bad_session)[:30]):
+                with self.assertRaises(InvalidProtocolDataError):
+                    self._reconcile(challenge, reply, bad_session)
+        # Rejected attempts on the client side do not spoil the genuine reply.
+        self.assertEqual(self._reconcile(challenge, reply, client_session), server_key)
 
 
 class ManuscriptDeviationTests(_Deployment):
@@ -1686,7 +1740,8 @@ class ZeroKnowledgeEvidenceTests(_Deployment):
     def test_token_carries_the_response_and_the_challenge_seed_never_the_commitment(self) -> None:
         context = self.protocol._context(self.system_parameters)
         self.assertEqual(context.response_bytes, self.rank * D * 18 // 8)
-        self.assertEqual(context.payload_bytes, context.response_bytes + 32 + 32 + 8)
+        # z, c~, ticket, nu and id_C (32 bytes each for c~, ticket and id_C; 8 for nu).
+        self.assertEqual(context.payload_bytes, context.response_bytes + 32 + 32 + 8 + 32)
         # A commitment in R_q'^k would need 23 bits per coefficient on its own.
         self.assertLess(context.payload_bytes, codec.packed_length(self.rank * D, QP))
 
@@ -1797,9 +1852,9 @@ class ZeroKnowledgeEvidenceTests(_Deployment):
         estimate = _least_squares_estimate(pairs)
         correlation = float(np.corrcoef(estimate.reshape(-1), secret.reshape(-1))[0, 1])
         self.assertLess(abs(correlation), 0.2)
-        guess = np.clip(np.rint(estimate), -ETA, ETA).astype(np.int64)
-        # Guessing zero everywhere is right for 37.5 % of CBD(2) coefficients.
-        self.assertLess(float((guess == secret).mean()), 0.25)
+        guess = np.clip(np.rint(estimate), -ETA_PROOF, ETA_PROOF).astype(np.int64)
+        # Guessing zero everywhere is right for 22.6 % of CBD(6) coefficients.
+        self.assertLess(float((guess == secret).mean()), 0.2)
         self.assertGreater(float(np.abs(estimate).std()), 100)
 
     def test_value_the_verifier_rebuilds_is_not_the_error_term(self) -> None:

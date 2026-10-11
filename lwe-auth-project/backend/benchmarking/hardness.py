@@ -80,13 +80,14 @@ def instances(protocol_id: str, parameters: dict[str, Any]) -> list[LWEInstance 
 
 def _proposed(parameters: dict[str, Any]) -> list[LWEInstance | SISInstance]:
     rank, degree, eta = parameters["k_proof"], parameters["d"], parameters["eta"]
+    proof_eta = parameters["eta_proof"]
     q_proof, beta = parameters["q_proof"], parameters["beta"]
     dimension = rank * degree
     return [
         LWEInstance(
             "clave",
             f"MLWE de la clave t = A's + e: rango {rank}, grado {degree}, estimado como LWE de dimensión {dimension}",
-            dimension, dimension, q_proof, _cbd(eta), _cbd(eta),
+            dimension, dimension, q_proof, _cbd(proof_eta), _cbd(proof_eta),
         ),
         SISInstance(
             "solidez",
