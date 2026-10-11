@@ -1,5 +1,9 @@
 \documentclass[12pt, letterpaper, oneside]{article}
 
+% xcolor con la opción table (filas alternadas en las tablas); debe declararse
+% antes de que tikz, pgfplots o listings carguen xcolor.
+\PassOptionsToPackage{table}{xcolor}
+
 % --- PAQUETES DE IDIOMA Y FORMATO ---
 \usepackage[spanish, es-tabla]{babel}
 \usepackage[margin=2.5cm]{geometry}
@@ -42,6 +46,17 @@
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \newcolumntype{C}{>{\centering\arraybackslash}X}
 \newcolumntype{R}{>{\raggedleft\arraybackslash}X}
+
+% Legibilidad de todas las tablas: más espacio entre filas y filas alternadas
+% con un gris muy claro, empezando por la primera fila de datos.
+\usepackage{etoolbox}
+\definecolor{filatabla}{gray}{0.94}
+\newcommand{\estilotabla}{%
+    \renewcommand{\arraystretch}{1.15}%
+    \rowcolors{2}{filatabla}{white}%
+}
+\AtBeginEnvironment{table}{\estilotabla}
+\AtBeginEnvironment{longtable}{\estilotabla}
 
 % Marcador visual para información pendiente
 \newcommand{\todoresult}[1]{\textbf{[TODO: #1]}}
@@ -119,22 +134,22 @@
 
 \section{Propuesta del Protocolo de Autenticación Poscuántica: ML-ZKAuth}
 
-\input{capitulos/04-Protocolo Propio}
-\label{sec:pqlite-proposal}
+%\input{capitulos/04-Protocolo Propio}
+%\label{sec:pqlite-proposal}
 
 \section{Evaluación experimental y benchmarking de protocolos de autenticación}
 
-\input{capitulos/05-Criterios de Benchmark}
+%\input{capitulos/05-Criterios de Benchmark}
 
-\input{capitulos/06-Entorno Experimental}
+%\input{capitulos/06-Entorno Experimental}
 
-\input{capitulos/07-Resultados}
+%\input{capitulos/07-Resultados}
 
-\input{capitulos/08-Análisis de ataques}
+%\input{capitulos/08-Análisis de ataques}
 
-\input{capitulos/09-Análisis individual}
+%\input{capitulos/09-Análisis individual}
 
-\input{capitulos/10-Conclusiones}
+%\input{capitulos/10-Conclusiones}
 
 % 5. Bibliografía en Estilo IEEE
 \newpage

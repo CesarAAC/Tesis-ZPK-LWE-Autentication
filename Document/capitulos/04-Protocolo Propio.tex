@@ -68,31 +68,47 @@ $\mathsf{H}$ & SHA3-256 sobre la codificación inequívoca de sus argumentos, co
 \subsection{Justificación de las Decisiones de Diseño}
 \label{sec:pqlite-diseno}
 
-Esta sección reúne las decisiones de diseño del protocolo y las relaciona con los conceptos del marco teórico que las justifican.
+Esta sección reúne las decisiones de diseño del protocolo. Para cada una explica por qué se tomó, es decir, qué concepto del marco teórico la justifica, y para qué, es decir, qué propiedad o beneficio busca.
 
 \paragraph{Tipo de Prueba}
 El cliente solo necesita demostrar que conoce la clave secreta asociada a su clave pública. Para esa relación no hacen falta marcos generales como LNP o LAASSO, que demuestran relaciones más ricas con pruebas de unos 14~KB o tokens de unos 62~KB \cite{lyubashevsky2022lattice, ma2026laasso}: basta la plantilla de Fiat--Shamir con abortos (Sección~\ref{sec:sintesis-zkp}). Por eso el protocolo usa un argumento no interactivo de conocimiento cero de ese tipo, en la forma comprimida de Dilithium (Secciones~\ref{sec:fs-comprimido}, \ref{sec:highbits} y \ref{sec:sampleinball}). La prueba consiste en una respuesta $\mathbf{z}$ y una semilla $\tilde{c}$ de 32 bytes, sin compromisos ni pruebas auxiliares, y con los parámetros elegidos el token cifrado completo ocupa 3\,524 bytes (Sección~\ref{sec:pqlite-token}).
 
+\textit{Para qué:} para que la autenticación sea liviana, porque un token de unos 3.5~KB cabe en canales de poco ancho de banda y en la memoria de dispositivos con recursos limitados, y el probador solo necesita aritmética de polinomios y funciones hash. Además, como la seguridad descansa en problemas de retículos, la autenticación resiste a un adversario con computador cuántico, algo que la línea base ECDSA no ofrece.
+
 \paragraph{Forma Comprimida: el Compromiso No Se Envía}
 En la forma comprimida de Fiat--Shamir, la prueba no incluye el compromiso (Sección~\ref{sec:fs-comprimido}). En este protocolo no es solo una cuestión de tamaño: como la clave es de tipo LWE, $\mathbf{t} = \mathbf{A}'\mathbf{s} + \mathbf{e}$, un verificador que recibiera $\mathbf{w}$ podría recuperar $c\,\mathbf{e}$ y, con él, la clave completa. No enviar el compromiso es necesario para el conocimiento cero (Sección~\ref{sec:pqlite-sin-w}).
+
+\textit{Para qué:} para proteger la confidencialidad de la clave secreta frente al propio verificador y, de paso, para reducir el token: el compromiso $\mathbf{w}$ ocuparía $k'd = 1024$ coeficientes de 23 bits, 2\,944 bytes, frente a los 32 bytes de la semilla $\tilde{c}$.
 
 \paragraph{Garantías de la Prueba}
 Con esa plantilla, la prueba es una NIZK con conocimiento cero estadístico en el modelo de oráculo aleatorio programable, también frente al verificador designado, y un argumento de conocimiento para una relación relajada (Sección~\ref{sec:rebobinado}), cuya resistencia a la suplantación se reduce a Module-LWE y a SelfTargetMSIS. Su seguridad frente a adversarios cuánticos se apoya en los análisis publicados de la plantilla en el QROM \cite{liu2019revisiting, kiltz2018concrete, devevey2023detailed, barbosa2023fixing}. Los enunciados exactos están en la Sección~\ref{sec:pqlite-seguridad}.
 
+\textit{Para qué:} para obtener autenticidad, porque solo quien conoce la clave secreta puede producir una prueba aceptada (resistencia a la suplantación); privacidad del secreto, porque ni siquiera el servidor aprende algo de él (conocimiento cero); y que ambas garantías se mantengan frente a un adversario cuántico.
+
 \paragraph{Ocultación del Token con KEM-DEM}
 Para que la terminal sea un canal ciego, que no pueda leer la prueba ni el identificador del cliente, el protocolo adopta la ocultación de tokens de LAASSO (Sección~\ref{sec:kem-dem}) \cite{ma2026laasso}. A diferencia de LAASSO, que cifra con Kyber una clave elegida por el probador, usa ML-KEM tal como está estandarizado en FIPS~203: el encapsulamiento genera la clave, de modo que el token sigue el paradigma KEM-DEM, con AES-256-GCM como cifrado autenticado \cite{nist2024fips203, cramer2003design}. Los parámetros son los de ML-KEM-768, cuyo rango $k = 3$ es el que fijaba el manuscrito original del protocolo. El contenido exacto del token se describe en la Sección~\ref{sec:pqlite-token}.
+
+\textit{Para qué:} para dar confidencialidad e integridad al contenido frente a la terminal, que no puede leer la prueba ni el identificador del cliente, ni modificarlos sin que falle la etiqueta de autenticación; para que la terminal no pueda relacionar dos autenticaciones del mismo cliente; y para usar primitivas estandarizadas, con implementaciones ya disponibles, en lugar de una construcción propia. El cifrado del contenido es simétrico: AES es rápido y muchos procesadores lo aceleran en hardware.
 
 \paragraph{Frescura con Tickets Emitidos por el Verificador}
 Siguiendo el mecanismo de tickets de LAASSO (Sección~\ref{sec:frescura}), cada prueba se liga a un ticket de un solo uso y a una marca de tiempo. A diferencia de LAASSO, donde un emisor de credenciales asigna los tickets, aquí el ticket lo emite el propio servidor verificador como reto de la sesión, de modo que una sola entidad emite los tickets y lleva el registro de consumo (Secciones~\ref{sec:pqlite-elementos} y \ref{sec:pqlite-flujo}).
 
+\textit{Para qué:} para evitar ataques de repetición, porque una prueba capturada no sirve en otra sesión, y para acotar con la ventana de tiempo cuánto debe recordarse cada ticket, de modo que el registro de tickets consumidos tenga un tamaño acotado (Sección~\ref{sec:pqlite-registro}). Que el propio verificador emita el ticket evita depender de un tercero y de sincronizar el reloj del cliente.
+
 \paragraph{Privacidad Buscada}
 La no vinculabilidad (Sección~\ref{sec:no-vinculabilidad}) se busca frente a terceros y frente a la terminal, no frente al servidor, que identifica al cliente por diseño. Se apoya en dos elementos: cada prueba usa una máscara nueva, uniforme en una caja, y la respuesta aceptada tiene una distribución que no depende de $\mathbf{s}$ (Sección~\ref{sec:pqlite-mascara}); y cada token se cifra con una clave nueva, obtenida por encapsulamiento, con el identificador del cliente dentro de la parte cifrada (Sección~\ref{sec:pqlite-token}). El protocolo no busca denegabilidad: una vez descifrada, su prueba es una prueba no interactiva que cualquiera puede verificar con la clave pública del cliente y el reto de la sesión, es decir, es transferible, y el servidor podría mostrarla a un tercero como evidencia de que el cliente participó (Sección~\ref{sec:denegabilidad}).
+
+\textit{Para qué:} para impedir que intermediarios y observadores del canal sigan o perfilen a los clientes. La transferibilidad tiene además una contrapartida: da una forma de no repudio, porque el servidor puede demostrar ante un tercero que el cliente produjo la prueba de esa sesión. Denegabilidad y no repudio son incompatibles, y el protocolo queda del lado del no repudio.
 
 \paragraph{Acuerdo de Clave con Reconciliación sin Duplicación}
 El acuerdo de clave aplica las funciones de Peikert directamente sobre $q = 3329$, sin la duplicación aleatoria (Sección~\ref{sec:peikert}). En consecuencia, la concordancia está garantizada para errores de hasta 415, y no hasta $q/8$, y cada bit de la clave tiene un sesgo de $832/1665$ frente a $1/2$ cuando la pista vale 0. La Sección~\ref{sec:pqlite-clave} acota la probabilidad de que el error supere 415.
 
-\paragraph{Implementación sin Tiempo Constante}
+\textit{Para qué:} para que, tras autenticarse, cliente y servidor compartan una clave de sesión y se comuniquen con cifrado simétrico, que es rápido y barato, sin un segundo intercambio de claves; las cuotas viajan dentro del token para que la terminal no pueda interponerse (Sección~\ref{sec:pqlite-seguridad}). Aplicar las funciones sin duplicación mantiene la reconciliación determinista, sin bits aleatorios adicionales, a cambio de ese sesgo pequeño.
+
+\paragraph{Implementación en Python, sin Tiempo Constante}
 El prototipo, escrito en Python con NumPy, no es de tiempo constante: no aprovecha las propiedades de la CBD descritas en la Sección~\ref{sec:cbd}, y el número de intentos del probador se refleja en su tiempo de ejecución, aunque su distribución no dependa de la clave (Sección~\ref{sec:pqlite-limitaciones}).
+
+\textit{Para qué:} el prototipo sirve para medir y comparar los seis candidatos del benchmark bajo un mismo marco, no para desplegarse. Python con NumPy, dentro de un entorno con SageMath que el experimento usa para estimar la dureza con el \textit{lattice-estimator}, permite prototipar rápido, reutilizar bibliotecas de álgebra y de criptografía y mantener un código compacto y legible, comparable con el de los demás candidatos, en lugar de una base de código extensa en C. El costo es no tener tiempo constante ni protección contra canales laterales, que una implementación de producción debería añadir.
 
 \subsubsection{Arquitectura de Módulo Dual}
 \label{sec:modulo-dual}
@@ -101,7 +117,7 @@ El manuscrito original del protocolo trabajaba sobre un único módulo, $q = 332
 \begin{equation}
 \left(\frac{2(832-46)-1}{1664}\right)^{768} \approx 6.6 \cdot 10^{-20},
 \end{equation}
-y con los parámetros actuales ($n = k'd = 1024$, $\beta = 138$), con una probabilidad del orden de $10^{-81}$: la prueba no terminaría nunca. Por eso los autores separaron el protocolo en dos capas con el mismo grado y módulos distintos:
+y con los parámetros actuales ($n = k'd = 1024$, $\beta = 138$), con una probabilidad del orden de $10^{-81}$: la prueba no terminaría nunca. Por eso este trabajo separa el protocolo en dos capas con el mismo grado y módulos distintos:
 \begin{equation}
 \mathcal{R}_{q'} = \mathbb{Z}_{q'}[x]/\langle x^{256} + 1 \rangle \quad (q' = 8\,380\,417) \qquad \text{y} \qquad \mathcal{R}_q = \mathbb{Z}_q[x]/\langle x^{256} + 1 \rangle \quad (q = 3329).
 \end{equation}
@@ -109,13 +125,15 @@ La prueba usa $q' = 2^{23} - 2^{13} + 1$, el primo de ML-DSA estandarizado en FI
 
 El módulo grande tiene un costo para la clave de identidad, porque con un ruido fijo un módulo mayor debilita LWE (Sección~\ref{sec:eleccion-modulo}): con el ruido $\mathrm{CBD}(2)$ de ML-KEM, una clave Module-LWE de rango 4 sobre $q'$ alcanza solo $2^{114.9}$ en el modelo Core-SVP, y con $\mathrm{CBD}(6)$ alcanza $2^{128.2}$ (Tabla~\ref{tab:pqlite_busqueda}). Por eso la capa de prueba usa su propio parámetro de ruido, $\eta' = 6$ ($\sigma = \sqrt{3}$, coeficientes en $\{-6, \dots, 6\}$, con el valor $0$ como el más probable, de probabilidad $\binom{12}{6}/4096 \approx 0.226$; Sección~\ref{sec:cbd}), mientras que la capa de transporte conserva el $\eta = 2$ de ML-KEM.
 
+\textit{Para qué:} para que la prueba termine en unos 13 intentos, cuando con un único módulo no terminaría; para mantener compactos los textos cifrados y las cuotas de la capa de transporte; y para usar en cada capa un módulo estandarizado, cuyas implementaciones y coprocesadores de NTT ya existen. El ruido $\eta' = 6$ sirve para que la clave alcance la meta común de $2^{128}$ en Core-SVP, la misma de los demás candidatos de retículos.
+
 \subsection{Elementos del Protocolo: Identificador, Ticket y Marca de Tiempo}
 \label{sec:pqlite-elementos}
 
 Antes de describir los mensajes conviene definir los valores que intervienen en ellos.
 
 \begin{itemize}
-    \item \textbf{Identificador del cliente.} Es el resumen de su clave pública, $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$, de 32 bytes. El servidor indexa su base de datos por $\mathsf{id}_{\mathcal{C}}$ y el cliente lo guarda junto a su clave secreta, de modo que no necesita almacenar $\mathbf{t}$ completo (Sección~\ref{sec:pqlite-setup}). Solo viaja cifrado dentro del token.
+    \item \textbf{Identificador del cliente.} Es el resumen de su clave pública, $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$, de 32 bytes. El servidor indexa su base de datos por $\mathsf{id}_{\mathcal{C}}$ y el cliente lo guarda junto a su clave secreta, de modo que no necesita almacenar $\mathbf{t}$ completo (Sección~\ref{sec:pqlite-setup}). Solo viaja cifrado dentro del token. Como el resumen tiene 256 bits, hay $2^{256} \approx 1.2 \cdot 10^{77}$ identificadores posibles, y la probabilidad de que dos de $N$ clientes compartan identificador es a lo sumo $N^2/2^{257}$ (cota del cumpleaños). Con $N = 10^{30}$ clientes, más de $10^{20}$ veces la población mundial, esa probabilidad es de unos $4 \cdot 10^{-18}$; recién con unos $1.5 \cdot 10^{31}$ clientes llegaría a $10^{-15}$. Además, un despliegue puede rechazar en el registro un identificador repetido.
     \item \textbf{Ticket.} Es un valor aleatorio de 256 bits, $\mathsf{tk} \xleftarrow{\$} \{0,1\}^{256}$, que el servidor emite para un único intento de autenticación. Sirve para que la prueba no pueda reutilizarse: la prueba se calcula sobre $\mathsf{tk}$ y el servidor anota cada ticket recibido en $\mathcal{L}_{\text{spent}}$ (Sección~\ref{sec:frescura}).
     \item \textbf{Marca de tiempo.} Es el instante de emisión del ticket según el reloj del servidor, $\nu$, expresado en milisegundos de tiempo Unix. El servidor solo acepta un token dentro de la ventana $|\nu_{\text{actual}} - \nu| \le \Delta_\nu$, con $\Delta_\nu = 300$~s. Como la fija el propio servidor, no hace falta sincronizar el reloj del cliente.
     \item \textbf{Reto.} El par $(\mathsf{tk}, \nu)$ forma el reto de la sesión: es la entrada del verificador que la transformación de Fiat--Shamir incluye en el hash.
@@ -162,6 +180,13 @@ p_{\text{acep}} = \left(\frac{2(\gamma_1-\beta)-1}{2\gamma_1-1}\right)^{k'd} \cd
 \end{equation}
 que se justifica en la Sección~\ref{sec:pqlite-mascara}. La Tabla~\ref{tab:pqlite_busqueda} recoge la búsqueda: para cada combinación, la dureza de la clave estimada con el \textit{lattice-estimator} en el modelo Core-SVP y el número medio de intentos $1/p_{\text{acep}}$, con $\gamma_1$ y $\gamma_2$ fijos. La combinación elegida, $k' = 4$ y $\eta' = 6$, es la de menor costo que alcanza $2^{128}$.
 
+La tabla puede reproducirse con el repositorio del trabajo, desde la carpeta del experimento (\texttt{lwe-auth-project}):
+\begin{itemize}
+    \item \texttt{make proof-layer-search} calcula la tabla completa. Descarga el \textit{lattice-estimator} en el \textit{commit} \texttt{53da598}, si no está presente, y ejecuta el cálculo dentro del contenedor del experimento.
+    \item \texttt{./scripts/proof-layer-search.sh -{}-without-hardness} calcula solo las dos últimas columnas, sin el estimador.
+\end{itemize}
+El cálculo está en el módulo \path{backend/benchmarking/proof_layer_search.py}. Para cada par $(k', \eta')$ construye la misma instancia de la clave que usa la estimación de dureza de los candidatos y calcula $p_{\text{acep}}$ con la misma función que usa el protocolo; imprime una fila por par. La prueba \path{backend/tests/test_proof_layer_search.py} comprueba que los valores coinciden con los de la tabla.
+
 \begin{table}[H]
 \centering
 \caption{Búsqueda de $(k', \eta')$ para la clave de identidad ($q' = 8\,380\,417$, $\kappa = 23$, $\gamma_1 = 2^{17}$, $\gamma_2 = 95\,232$).}
@@ -174,10 +199,10 @@ $k'$ & $\eta'$ & \textbf{Clave (Core-SVP clásico)} & \textbf{Aceptación por in
 3 & 2 & $2^{78.8}$ & 0.525 & 1.9 \\
 4 & 2 & $2^{114.9}$ & 0.423 & 2.4 \\
 4 & 4 & $2^{122.6}$ & 0.180 & 5.6 \\
-4 & 5 & $2^{126.1}$ & 0.118 & 8.5 \\
+4 & 5 & $2^{126.1}$ & 0.117 & 8.5 \\
 \textbf{4} & \textbf{6} & $\mathbf{2^{128.2}}$ & \textbf{0.077} & \textbf{13.1} \\
 4 & 7 & $2^{129.9}$ & 0.050 & 20.0 \\
-4 & 8 & $2^{131.4}$ & 0.033 & 30.6 \\
+4 & 8 & $2^{131.4}$ & 0.033 & 30.7 \\
 5 & 2 & $2^{152.4}$ & 0.341 & 2.9 \\
 \bottomrule
 \end{tabular}
@@ -286,7 +311,7 @@ El lema siguiente enuncia esta idea en general.
 \begin{equation}
 \Pr\left[\mathbf{z} = \mathbf{z}_0 \;\middle|\; \|\mathbf{z}\|_\infty < \gamma_1 - \beta\right] = \frac{1}{(2(\gamma_1-\beta)-1)^{k'd}} \qquad \text{para todo } \mathbf{z}_0 \in S_{\gamma_1-\beta-1}^{k'}.
 \end{equation}
-\textit{Demostración.} Coeficiente a coeficiente, como en el ejemplo: sea $\varsigma$ el coeficiente correspondiente de $c\,\mathbf{s}$, con $|\varsigma| \le \beta$. Para cada $z_0$ con $|z_0| < \gamma_1 - \beta$ existe exactamente un valor de la máscara que lo produce, $y = z_0 - \varsigma$, y ese valor está dentro de la caja porque $|z_0 - \varsigma| \le \gamma_1 - \beta - 1 + \beta = \gamma_1 - 1$. Así, cada $z_0$ del conjunto aceptado tiene probabilidad $1/(2\gamma_1-1)$, independiente de $\varsigma$; como hay $2(\gamma_1-\beta)-1$ valores aceptados y los coeficientes son independientes, se obtiene la fórmula. $\square$
+\textit{Demostración.} Coeficiente a coeficiente, como en el ejemplo: sea $\varsigma$ el coeficiente correspondiente de $c\,\mathbf{s}$, con $|\varsigma| \le \beta$. Para cada $z_0$ con $|z_0| < \gamma_1 - \beta$ existe exactamente un valor de la máscara que lo produce, $y = z_0 - \varsigma$, y ese valor está dentro de la caja porque $|z_0 - \varsigma| \le \gamma_1 - \beta - 1 + \beta = \gamma_1 - 1$. Así, cada $z_0$ del conjunto aceptado tiene probabilidad $1/(2\gamma_1-1)$, independiente de $\varsigma$; como hay $2(\gamma_1-\beta)-1$ valores aceptados y los coeficientes son independientes, se obtiene la fórmula del lema, lo que termina la demostración.
 
 En palabras: la condición $\|\mathbf{z}\|_\infty < \gamma_1 - \beta$ recorta, en cada coeficiente, una franja de anchura $\beta$ en cada borde de la caja, justo lo que el secreto puede desplazarla; lo que queda tiene la misma distribución con cualquier secreto. En consecuencia, la condición sobre la respuesta se cumple con probabilidad $p_z = \left(\frac{2(\gamma_1-\beta)-1}{2\gamma_1-1}\right)^{k'd} \approx \mathrm{e}^{-k'd\beta/\gamma_1}$, que tampoco depende de la clave. Por eso la máscara debe ser mucho más ancha que $\beta$: cada coeficiente se acepta con probabilidad $261\,867/262\,143 \approx 0.99895$, pero hay $k'd = 1024$ coeficientes, y $(261\,867/262\,143)^{1024} \approx 0.340$. Con una máscara más estrecha, la franja recortada sería una fracción mayor de la caja y casi ningún intento se publicaría.
 
@@ -354,7 +379,7 @@ Con los parámetros de la Tabla~\ref{tab:pqlite_dual_parameters}, $\text{tok}_1$
 Al recibir un token, el servidor ejecuta, en este orden:
 \begin{enumerate}
     \item \textbf{Descifrado.} $K_{\text{tok}} = \mathsf{ML\text{-}KEM\text{-}768.Decaps}(vsk, \text{tok}_1)$ y descifrado de $\text{tok}_2$. Si la etiqueta de GCM no es válida, o si el contenido no es una respuesta bien formada, rechaza.
-    \item \textbf{Identidad y reto.} Busca $\mathbf{t}$ por $\mathsf{id}_{\mathcal{C}}$ y comprueba que $(\mathsf{tk}, \nu)$ sea un reto que él emitió. En el prototipo, que sigue el contrato común de los seis candidatos, quien invoca la verificación entrega $\mathbf{t}$ y el reto emitido, y el verificador exige que $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$ y que el reto coincida con el que trae el token. Un fallo en este paso rechaza el token sin consumir el ticket.
+    \item \textbf{Identidad y reto.} Busca $\mathbf{t}$ por $\mathsf{id}_{\mathcal{C}}$ y comprueba que $(\mathsf{tk}, \nu)$ sea un reto que él emitió. En el prototipo, quien invoca la verificación entrega $\mathbf{t}$ y el reto emitido, y el verificador exige que $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$ y que el reto coincida con el que trae el token. Un fallo en este paso rechaza el token sin consumir el ticket.
     \item \textbf{Ventana temporal.} Rechaza si $|\nu_{\text{actual}} - \nu| > \Delta_\nu$.
     \item \textbf{Registro de consumo.} Si $\mathsf{tk} \in \mathcal{L}_{\text{spent}}$, rechaza; si no, añade $\mathsf{tk}$ a $\mathcal{L}_{\text{spent}}$ de forma atómica. El ticket se consume antes de comprobar la prueba, de modo que un token inválido también lo gasta. Los tickets anteriores a la ventana pueden borrarse del registro, porque la propia ventana ya los rechaza; por eso el registro tiene un tamaño acotado (ver el párrafo siguiente).
     \item \textbf{Cota de la respuesta.} Rechaza si $\|\mathbf{z}\|_\infty \ge \gamma_1 - \beta$.
@@ -378,6 +403,7 @@ Cada entrada guarda el ticket (32 bytes) y su marca de tiempo (8 bytes): 40 byte
 \caption{Tamaño del registro de tickets consumidos con $\Delta_\nu = 300$~s.}
 \label{tab:pqlite_registro}
 \small
+\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lrrrrr}
 \toprule
 \textbf{Escenario} & \textbf{Clientes $N$} & \textbf{Intentos/hora} & \textbf{Entradas $E$} & \textbf{Datos (40 B)} & \textbf{Prototipo} \\
@@ -525,13 +551,145 @@ Si la cuota del cliente viajara aparte, la terminal podría sustituirla por una 
 
 \paragraph{Limitaciones}
 \label{sec:pqlite-limitaciones}
+Para cada limitación se indica por qué ocurre y por qué se acepta en este trabajo o cómo se mitigaría.
 \begin{itemize}
-    \item El prototipo, escrito en Python con NumPy, no es de tiempo constante, y la multiplicación de polinomios es la convolución negacíclica directa, sin NTT. El número de intentos del probador se refleja en su tiempo de ejecución; su distribución no depende de la clave.
-    \item No se analizaron ataques de canal lateral ni de fallos inducidos sobre el dispositivo.
-    \item Este trabajo no demuestra la seguridad en el QROM de la variante concreta: se apoya en los análisis publicados de la plantilla de Dilithium \cite{liu2019revisiting, kiltz2018concrete, devevey2023detailed, barbosa2023fixing}.
-    \item El estado del verificador (la clave $vsk$ y el registro de tickets consumidos) vive en la memoria del proceso que ejecutó la configuración; un despliegue con varios procesos necesitaría un almacén compartido y atómico.
-    \item La reconciliación sobre un módulo impar sin duplicación deja un sesgo pequeño en cada bit de la clave de sesión.
+    \item \textbf{El prototipo no es de tiempo constante.}
+    \textit{Por qué ocurre:} está escrito en Python con NumPy, cuyas operaciones con enteros y arreglos no garantizan un tiempo independiente de los datos, y multiplica polinomios con la convolución negacíclica directa, sin NTT. Además, el número de intentos del probador, unos 13 en promedio, se refleja en su tiempo de ejecución.
+    \textit{Por qué se acepta:} el prototipo sirve para medir y comparar candidatos bajo el mismo marco (Sección~\ref{sec:pqlite-diseno}), y el número de intentos no filtra la clave, porque su distribución es geométrica con una probabilidad de aceptación que no depende de ella (Sección~\ref{sec:pqlite-mascara}).
+    \textit{Mitigación:} una implementación de producción en un lenguaje compilado, con aritmética de tiempo constante y NTT, que ambos anillos admiten (Sección~\ref{sec:ntt}).
+
+    \item \textbf{No se analizaron canales laterales ni fallos inducidos.}
+    \textit{Por qué ocurre:} esos ataques dependen del dispositivo físico (consumo, emisiones, inyección de fallos) y no del protocolo, y el trabajo no evalúa hardware.
+    \textit{Por qué se acepta:} quedan fuera del modelo de amenazas (Sección~\ref{sec:architecture-threat-model}).
+    \textit{Mitigación:} implementación en tiempo constante, enmascaramiento de los valores secretos y elementos seguros o módulos criptográficos certificados para guardar $(\mathbf{s}, \mathbf{e})$.
+
+    \item \textbf{No hay una demostración propia de seguridad en el QROM.}
+    \textit{Por qué ocurre:} demostrar la seguridad de una variante concreta frente a adversarios cuánticos es un trabajo de investigación en sí mismo.
+    \textit{Por qué se acepta:} la prueba sigue la plantilla de Dilithium, cuya seguridad en el QROM está analizada \cite{liu2019revisiting, kiltz2018concrete, devevey2023detailed, barbosa2023fixing}, y la reducción clásica se apoya en el \textit{forking lemma}.
+    \textit{Mitigación:} una demostración específica queda como trabajo futuro.
+
+    \item \textbf{El estado del verificador vive en la memoria de un proceso.}
+    \textit{Por qué ocurre:} la clave $vsk$ y el registro de tickets consumidos se guardan en el proceso que ejecutó la configuración, porque el contrato común del benchmark construye un objeto nuevo en cada llamada y no tiene una base de datos de sesiones.
+    \textit{Por qué se acepta:} el benchmark ejecuta un solo proceso de verificación.
+    \textit{Mitigación:} un despliegue con varios procesos o servidores necesita un almacén compartido con inserción atómica de tickets, y una custodia de $vsk$ en un módulo criptográfico; el tamaño de ese almacén está acotado (Sección~\ref{sec:pqlite-registro}).
+
+    \item \textbf{La clave de sesión tiene un sesgo pequeño.}
+    \textit{Por qué ocurre:} la reconciliación se aplica sobre el módulo impar $q = 3329$ sin la duplicación aleatoria de Peikert, y cuando la pista vale 0 el bit vale 1 con probabilidad $832/1665$ en lugar de $1/2$ (Sección~\ref{sec:peikert}).
+    \textit{Por qué se acepta:} cada bit sesgado conserva al menos $\log_2(1665/833) \approx 0.9991$ bits de entropía mínima, de modo que, aun si los 256 bits fueran sesgados, la clave tendría más de 255.7 bits.
+    \textit{Mitigación:} derivar la clave de sesión con una función hash a partir de los bits reconciliados, como hacen los KEM estandarizados, eliminaría el sesgo; el prototipo entrega los bits reconciliados directamente.
+
+    \item \textbf{No hay confirmación de clave.}
+    \textit{Por qué ocurre:} el protocolo no incluye un mensaje con el que cada parte compruebe que la otra obtuvo la misma $K_{\text{ses}}$.
+    \textit{Por qué se acepta:} un desacuerdo ocurre con probabilidad menor que $2.2 \cdot 10^{-23}$ (Sección~\ref{sec:pqlite-clave}) y solo hace fallar el primer mensaje cifrado, tras lo cual se repite la autenticación.
+    \textit{Mitigación:} añadir un código de autenticación de mensaje calculado con $K_{\text{ses}}$, como los mensajes de finalización de TLS, sería un cambio de protocolo.
+
+    \item \textbf{No hay protección específica contra relés.}
+    \textit{Por qué ocurre:} un intermediario que reenvía en tiempo real los mensajes entre un cliente legítimo y el servidor completa la autenticación dentro de la ventana de 300~s, porque el protocolo no mide distancias ni tiempos de respuesta.
+    \textit{Por qué se acepta:} si la sesión se protege con $K_{\text{ses}}$, el intermediario no obtiene la clave, porque la cuota del cliente viaja dentro del token y la respuesta del servidor va cifrada con una clave que solo conoce el cliente; el relé solo afecta a usos que tratan la aceptación como una autorización sin cifrar la sesión (Sección~\ref{sec:pqlite-improbables}).
+    \textit{Mitigación:} usar siempre la clave de sesión o añadir medición de distancia (\textit{distance bounding}) en el canal físico.
 \end{itemize}
+
+\subsection{Eventos Improbables, Comparación y Amenazas Prácticas}
+\label{sec:pqlite-improbables}
+
+A lo largo del documento aparecen eventos de probabilidad despreciable: en las definiciones de completitud y solidez (Sección~\ref{sec:zkp}), en la corrección de un KEM (Sección~\ref{sec:kem-dem}), en las colisiones de tickets y de identificadores (Secciones~\ref{sec:frescura} y \ref{sec:pqlite-elementos}), en el límite de intentos del probador (Sección~\ref{sec:pqlite-prueba}), en el error de reconciliación (Sección~\ref{sec:pqlite-clave}) y en la búsqueda genérica del desafío (Sección~\ref{sec:pqlite-seguridad}). Despreciable no significa imposible: significa tan pequeño que, en la práctica, el evento no ocurre. Para dar una escala, si mil millones de dispositivos hicieran mil millones de intentos por segundo durante toda la edad del universo, unos $4.3 \cdot 10^{17}$~s, harían unos $4.3 \cdot 10^{35}$ intentos, y un evento de probabilidad $2^{-128} \approx 2.9 \cdot 10^{-39}$ por intento ocurriría con probabilidad de alrededor de $10^{-3}$.
+
+Esta sección reúne esos valores en un solo lugar. Los separa según su consecuencia: los de la Tabla~\ref{tab:pqlite_improbables_inocuos} solo hacen que una autenticación honesta falle y deba repetirse, mientras que los de la Tabla~\ref{tab:pqlite_improbables_peligrosos} darían ventaja a un atacante. Después los compara con mecanismos de autenticación en uso (Tabla~\ref{tab:pqlite_industria}) y resume cómo se comporta el protocolo frente a las amenazas prácticas más comunes (Tabla~\ref{tab:pqlite_amenazas}).
+
+\paragraph{Eventos que No Comprometen la Seguridad}
+Son fallos de corrección: le ocurren a un cliente honesto y su única consecuencia es que la autenticación, o el acuerdo de clave, no se completa. No dan información ni ventaja a un atacante.
+
+\begin{table}[H]
+\centering
+\caption{Eventos improbables que solo afectan la disponibilidad.}
+\label{tab:pqlite_improbables_inocuos}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{4.0cm}>{\raggedright\arraybackslash}p{3.3cm}Y}
+\toprule
+\textbf{Evento} & \textbf{Probabilidad} & \textbf{Qué ocurre si sucede} \\
+\midrule
+Una prueba honesta es rechazada & $0$ & Nunca ocurre: la completitud es perfecta, porque el cliente solo publica intentos que pasan las dos condiciones de rechazo (Sección~\ref{sec:pqlite-verificacion}). \\
+El probador no obtiene una prueba en 1\,000 intentos & $2.4 \cdot 10^{-35}$ & El prototipo devuelve un error y no envía nada; el cliente pide un reto nuevo y repite. \\
+Falla el desencapsulado de ML-KEM-768 & $\approx 2^{-164}$ \cite{avanzi2021kyber} & El servidor obtiene otra clave, la etiqueta de AES-GCM no verifica y el token se rechaza sin gastar el ticket; el cliente repite. \\
+El servidor emite dos veces el mismo ticket & $\le N^2/2^{257}$ & A lo sumo, el segundo token honesto se rechaza por ticket gastado y el cliente repite. Un token antiguo no sirve, porque su marca de tiempo es otra. \\
+Dos clientes tienen el mismo identificador & $\le N^2/2^{257}$ & Un despliegue lo detecta al registrar al segundo cliente, que genera otra clave (Sección~\ref{sec:pqlite-elementos}). \\
+El error de reconciliación supera 415 & $\le 2.2 \cdot 10^{-23}$ por sesión & Cliente y servidor obtienen claves de sesión distintas; lo notan en el primer mensaje cifrado que no se puede descifrar y repiten la autenticación. Las cuotas son de un solo uso, de modo que un observador no aprende nada. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Eventos que Darían Ventaja a un Atacante}
+Son los que mide el error de solidez y los supuestos de dureza: si ocurrieran, un impostor se autenticaría como otro cliente en esa sesión o alteraría el acuerdo de clave. La Tabla~\ref{tab:pqlite_improbables_peligrosos} muestra por qué no son practicables.
+
+\begin{table}[H]
+\centering
+\caption{Eventos improbables que comprometerían la seguridad.}
+\label{tab:pqlite_improbables_peligrosos}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{4.0cm}>{\raggedright\arraybackslash}p{3.3cm}Y}
+\toprule
+\textbf{Evento} & \textbf{Probabilidad o costo} & \textbf{Por qué no es practicable} \\
+\midrule
+Enviar un token al azar y que sea aceptado & $\approx 2^{-256}$ por intento & Hay que acertar la semilla $\tilde{c}$ de 256 bits del hash, y cada intento debe enviarse al servidor y consume un ticket. \\
+Búsqueda genérica del desafío (Sección~\ref{sec:pqlite-seguridad}) & $2^{-131.1}$ por evaluación del hash & El hash incluye el ticket, de modo que la búsqueda solo puede empezar al recibirlo y debe terminar dentro de la ventana de 300~s. Con $10^{12}$ evaluaciones por segundo, la probabilidad de éxito en esa ventana es de unos $2^{-83}$; con el algoritmo de Grover harían falta unos $2^{65.5}$ pasos secuenciales. \\
+Falsificar el contenido cifrado del token, por ejemplo para cambiar la cuota $\mathbf{b}_{\mathcal{C}}$ & $2^{-128}$ por intento & Hay que acertar la etiqueta de 128 bits de AES-GCM \cite{dworkin2007gcm}, y cada intento debe enviarse al servidor. \\
+Romper Module-LWE o SelfTargetMSIS con los parámetros de la capa de prueba & $\ge 2^{128.2}$ operaciones (Core-SVP) & No es un evento de suerte sino de cómputo (Tabla~\ref{tab:pqlite_dureza}). Si se lograra, rompería la clave atacada; el riesgo que hay que vigilar es un avance en el criptoanálisis de retículos. \\
+Que la respuesta filtre el secreto por mala suerte & $0$ & No existe ese evento: el lema de rechazo es exacto y la respuesta publicada es siempre uniforme en su caja, sea cual sea la clave (Sección~\ref{sec:pqlite-mascara}). El secreto solo podría filtrarse por canales laterales. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Comparación con Mecanismos de Autenticación en Uso}
+La Tabla~\ref{tab:pqlite_industria} compara esas cifras con las de mecanismos de autenticación de uso extendido. Las probabilidades de los factores numéricos se obtienen contando los valores posibles; en la práctica se compensan limitando el número de intentos y vigilando el fraude.
+
+\begin{table}[H]
+\centering
+\caption{Probabilidad de que un atacante acierte por intento, o costo de un ataque, en mecanismos en uso y en ML-ZKAuth.}
+\label{tab:pqlite_industria}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.9cm}>{\raggedright\arraybackslash}p{1.9cm}>{\raggedright\arraybackslash}p{3.6cm}Y}
+\toprule
+\textbf{Mecanismo} & \textbf{Evento} & \textbf{Probabilidad o costo} & \textbf{Resistencia cuántica} \\
+\midrule
+PIN numérico de 4 dígitos & adivinarlo & $10^{-4}$ por intento & No aplica (factor humano). \\
+Código de un solo uso de 6 dígitos & adivinarlo & $10^{-6}$ por intento & No aplica (factor humano). \\
+Criptograma de 64 bits de las tarjetas de pago con chip (EMV) \cite{emvco2011book2} & falsificarlo & $2^{-64} \approx 5.4 \cdot 10^{-20}$ por intento & Parcial: el criptograma usa cifrado simétrico, y la autenticación de datos de la tarjeta usa RSA, que el algoritmo de Shor rompe \cite{emvco2011book2}. \\
+Etiqueta de 128 bits de AES-GCM, como en TLS \cite{dworkin2007gcm} & falsificarla & $2^{-128} \approx 2.9 \cdot 10^{-39}$ por intento & Se mantiene: Grover no reduce la probabilidad de un intento único. \\
+Firma ECDSA sobre P-256, como en FIDO2 \cite{fido_alliance, barker2020sp80057} & romper la clave & $2^{128}$ operaciones & No: el algoritmo de Shor la rompe en tiempo polinomial. \\
+\midrule
+ML-ZKAuth & adivinar el desafío & $2^{-131.1}$ por evaluación del hash & Grover: unas $2^{65.5}$ evaluaciones secuenciales. \\
+ML-ZKAuth & aceptación de un token al azar & $\approx 2^{-256}$ por intento & Se mantiene. \\
+ML-ZKAuth & romper la clave & $2^{128.2}$ clásico, $2^{116.3}$ cuántico (Core-SVP) & Sí, bajo los supuestos de Module-LWE y SelfTargetMSIS. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Desde el punto de vista criptográfico, ML-ZKAuth está al nivel de los mecanismos de 128 bits en uso o por encima, y a diferencia de ellos resiste a un adversario cuántico. Sus cifras no son el punto débil: en la práctica, las brechas de los sistemas de autenticación casi nunca rompen la criptografía, sino que explotan a las personas, a los dispositivos o a la operación.
+
+\paragraph{Amenazas Prácticas}
+La Tabla~\ref{tab:pqlite_amenazas} resume cómo se comporta el protocolo frente a esas amenazas: para cada una indica si el protocolo la cubre y por qué, o cómo se mitigaría.
+
+\begin{table}[H]
+\centering
+\caption{Amenazas prácticas y cobertura de ML-ZKAuth.}
+\label{tab:pqlite_amenazas}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{4.1cm}>{\raggedright\arraybackslash}p{2.0cm}Y}
+\toprule
+\textbf{Amenaza} & \textbf{Cobertura} & \textbf{Razón o mitigación} \\
+\midrule
+Suplantación de identidad (\textit{phishing}) & Parcial & No hay una contraseña ni un código que el usuario teclee y pueda entregar a un sitio falso, y el token solo puede leerlo el servidor que posee $vsk$. Si el atacante roba el dispositivo con $(\mathbf{s}, \mathbf{e})$, puede suplantar al cliente: el protocolo no incluye un segundo factor local, como un PIN o la biometría, que desbloquee la clave. \\
+Terminal comprometida y captura de datos (\textit{skimming}) & Sí & Es el caso de diseño: la terminal es un canal ciego que solo ve tokens cifrados de longitud fija y de un solo uso, sin el identificador del cliente (Sección~\ref{sec:pqlite-token}). \\
+Repetición de mensajes (\textit{replay}) & Sí & Ticket de un solo uso, ventana de 300~s y registro de tickets consumidos (Sección~\ref{sec:pqlite-verificacion}). \\
+Relé en tiempo real & Parcial & El intermediario completa la autenticación, pero no obtiene la clave de sesión; el riesgo se limita a usos que no cifran la sesión con $K_{\text{ses}}$ (Sección~\ref{sec:pqlite-limitaciones}). \\
+Robo de la base de datos del servidor & Sí, salvo $vsk$ & El servidor solo guarda claves públicas $\mathbf{t}$, con las que no se puede suplantar a un cliente. Quien robe $vsk$ puede leer tokens y suplantar al servidor ante los clientes, no a los clientes: $vsk$ debe custodiarse en un módulo criptográfico. \\
+Malware o robo del dispositivo del cliente & No & Quien obtiene $(\mathbf{s}, \mathbf{e})$ suplanta al cliente; se mitiga con almacenamiento seguro de la clave en el dispositivo, fuera del protocolo. \\
+Canales laterales y fallos inducidos & No & El prototipo no es de tiempo constante (Sección~\ref{sec:pqlite-limitaciones}). \\
+Adversario con computador cuántico & Sí & La seguridad descansa en problemas de retículos (Tabla~\ref{tab:pqlite_dureza}); los mecanismos basados en RSA o curvas elípticas no la tienen. \\
+Denegación de servicio & Fuera del modelo & Un atacante puede pedir tickets en masa; se mitiga limitando la emisión de tickets por conexión (Sección~\ref{sec:pqlite-registro}). \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \subsection{Correspondencia con la Implementación}
 \label{sec:pqlite-implementacion}

@@ -148,6 +148,10 @@ Con el estimador montado en `/estimator`, `tests/test_hardness.py` además compr
 
 Si se cambia un parámetro en `default.json`, el cálculo usa el nuevo valor automáticamente: `hardness_cli` resuelve los parámetros con el propio protocolo.
 
+### Búsqueda del rango y del ruido de `proposed_lwe`
+
+La tabla del capítulo 4 de la tesis con la búsqueda de `(k_proof, eta_proof)` se reproduce con `make proof-layer-search` (o `./scripts/proof-layer-search.sh`). El script clona el estimador en `../lattice-estimator` en el commit indicado arriba si no está (o usa `LATTICE_ESTIMATOR_DIR`), lo monta en `/estimator` y ejecuta `python -m benchmarking.proof_layer_search` en el contenedor. Por cada par imprime la dureza de la clave (misma instancia y mismos ataques que `hardness_cli`), la probabilidad de aceptación por intento y los intentos medios. Con `--without-hardness` calcula solo las dos últimas columnas y no necesita el estimador.
+
 ## Límites
 
 - **Core-SVP es una cota para comparar, no un coste.** Las estimaciones refinadas (número de llamadas, memoria, *dimensions for free*) suben el coste clásico unos 30 a 40 bits: Kyber512 pasa de 2^118 a 2^151.5 compuertas y Dilithium2 de 2^123 a 2^159.

@@ -386,6 +386,16 @@ Lattice-estimator con el modelo Core-SVP (2^(0.292·b) clásico, 2^(0.265·b) cu
 
 Referencias con la misma herramienta: ML-KEM-512, primal `b = 406` (2^118.6); ML-DSA-44, MSIS `b = 423`. La especificación de Dilithium (ronda 3, Tabla 3) publica un juego de rango 3 con `η = 3` uniforme, «1-», por debajo del nivel 1 de NIST (2^89). La capa de transporte (rango 3 sobre `q = 3329` con `η = 2`, del tamaño de ML-KEM-768) está en 2^174.3 y no limita. 128 bits Core-SVP es más exigente que lo que cumple ML-KEM-512 (2^118), aceptado por NIST en la categoría 1; ninguna de estas cifras certifica una categoría de NIST.
 
+La búsqueda completa de `(k_proof, eta_proof)` que muestra la tabla del capítulo 4 de la tesis (`tab:pqlite_busqueda`: clave Core-SVP, aceptación por intento e intentos medios para 3:2, 4:2, 4:4, 4:5, 4:6, 4:7, 4:8 y 5:2) se reproduce con:
+
+```bash
+make proof-layer-search                                   # clona el lattice-estimator en ../lattice-estimator si falta
+LATTICE_ESTIMATOR_DIR=/ruta ./scripts/proof-layer-search.sh   # con otro checkout del estimador
+./scripts/proof-layer-search.sh --without-hardness        # solo aceptación e intentos, sin estimador
+```
+
+El cálculo está en `backend/benchmarking/proof_layer_search.py`: usa la misma instancia de clave que `benchmarking.hardness` y la misma `acceptance_probability` del protocolo, y evalúa también pares que `resolve_parameters` rechaza (por ejemplo `eta_proof = 8`, con aceptación menor que 0.05), porque la búsqueda muestra por qué se descartaron. `--grid 4:6,5:2` cambia los pares y `--output archivo.json` guarda las filas. `tests/test_proof_layer_search.py` comprueba que la aceptación y los intentos coinciden con la tabla de la tesis y, con el estimador montado en `/estimator`, también la dureza.
+
 ## Estado del verificador
 
 `system_parameters` es público por contrato y el registro crea un objeto nuevo en cada llamada, así que `vsk` y el registro de tickets consumidos viven en un almacén del proceso, indexado por `H(vpk)`. Consecuencias:
