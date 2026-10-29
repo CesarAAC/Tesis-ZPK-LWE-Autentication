@@ -1,109 +1,74 @@
 \subsection{Análisis de ataques}
 \label{sec:attack-analysis}
 
-La Tabla~\ref{tab:attack-analysis} resume las principales familias de ataques relevantes
-para cada protocolo. La presencia de una familia de ataque no implica necesariamente
-que el protocolo sea vulnerable bajo los parámetros empleados; se documenta para
-identificar las condiciones que deben satisfacerse para conservar el nivel de
-seguridad esperado.
+Esta sección resume, para cada protocolo, las principales familias de ataques, la condición que las haría efectivas y la forma en que los parámetros y la implementación evaluados las mitigan. Que exista una familia de ataque no implica que el protocolo sea vulnerable con los parámetros empleados; se documenta para identificar las condiciones que deben mantenerse para conservar el nivel de seguridad esperado. Las cifras de dureza son las estimaciones Core-SVP clásicas de la Sección~\ref{sec:security-evaluation}.
 
-\begin{longtable}{p{2.5cm}p{3.0cm}p{3.6cm}p{4.1cm}}
-\caption{Ataques relevantes y mecanismos de mitigación.}
-\label{tab:attack-analysis}
-\\
+\paragraph{ECDSA}
+En ECDSA hay tres riesgos que considerar. El primero es el adversario cuántico: el algoritmo de Shor resuelve el logaritmo discreto en tiempo polinomial \cite{huang2018lattice, rewal2023quantumsafe, mukil2026implementing}, de modo que un computador cuántico de escala suficiente recuperaría la clave privada a partir de la pública. No hay mitigación dentro de ECDSA: frente a ese adversario, la única medida es migrar a un esquema poscuántico. El segundo es el número secreto $k$ que se usa en cada firma: si se repite en dos firmas o se filtra, la clave privada se recupera de inmediato, por lo que debe ser secreto, impredecible y distinto en cada firma \cite{nist2023fips186}. En la implementación evaluada lo genera OpenSSL a través de la biblioteca \texttt{cryptography}. El tercero es la repetición: el cliente firma un reto aleatorio de 32~bytes emitido por el verificador, de modo que una firma capturada no sirve para otro reto; basta con que el verificador acepte cada reto una sola vez. Frente a un adversario clásico, P-256 ofrece 128 bits de seguridad \cite{barker2020sp80057}.
 
-\toprule
-\textbf{Protocolo} &
-\textbf{Ataque / riesgo} &
-\textbf{Condición relevante} &
-\textbf{Mitigación / consideración} \\
-\midrule
-\endfirsthead
+\paragraph{Ataques comunes a los candidatos de retículos}
+Los cinco candidatos de retículos usan Fiat--Shamir con abortos y comparten, por tanto, las mismas familias de ataques. La \textit{reducción de retículos contra la clave}, con los ataques primal, dual e híbrido (Sección~\ref{sec:estimacion}), busca recuperar el secreto a partir de la clave pública; su costo depende de la dimensión, del módulo y del ruido, y los parámetros se ajustaron para que el ataque más barato cueste al menos $2^{128}$ (Tabla~\ref{tab:security-levels}). La \textit{falsificación de pruebas} sin conocer la clave exigiría resolver una instancia de SelfTargetSIS o de su variante estructurada, cuya dureza se estima como la de un problema SIS o MSIS: entre $2^{150.7}$ y $2^{184.3}$, superior a la de la clave. La \textit{búsqueda genérica del desafío}, que fija un desafío y prueba compromisos hasta que el hash lo produzca, necesita del orden de tantas evaluaciones del hash como desafíos posibles, entre $2^{129.6}$ y $2^{131.6}$ según el candidato; el algoritmo de Grover reduce ese costo a unas $2^{65}$ evaluaciones. La \textit{filtración del secreto a través de la respuesta} se evita con el muestreo por rechazo, que hace que la respuesta publicada sea uniforme en su caja e independiente de la clave (Sección~\ref{sec:fiat-shamir-abortos}). La \textit{repetición} se evita porque el reto del verificador (en ML-ZKAuth, el ticket y la marca de tiempo) y el resumen de la clave pública entran en el hash: una respuesta no verifica con otro reto ni con otra clave, algo que el benchmark comprueba antes de medir (Sección~\ref{sec:implementation-security}). Por último, los \textit{canales laterales} quedan fuera del alcance: los prototipos, escritos en Python con NumPy, no son de tiempo constante.
 
-\toprule
-\textbf{Protocolo} &
-\textbf{Ataque / riesgo} &
-\textbf{Condición relevante} &
-\textbf{Mitigación / consideración} \\
-\midrule
-\endhead
+\paragraph{LWE estándar}
+El ataque más barato contra su clave es el dual híbrido, con un bloque BKZ de 438 y un costo de $2^{128.0}$. Para alcanzarlo, la dimensión se fijó en $n = m = 1116$, porque con $n = m = 1024$ la clave quedaría en $2^{114.9}$. Su solidez está en $2^{168.5}$ y su espacio de desafíos tiene $2^{129.6}$ elementos. Su riesgo principal es una selección de parámetros por debajo de la meta, que el ajuste documentado en el repositorio del proyecto evita (\texttt{docs/estimacion-de-dureza.md}).
 
-ECDSA &
-\todoresult{ataque} &
-\todoresult{condición} &
-\todoresult{mitigación} \\
+\paragraph{Binary-LWE}
+Cada coeficiente de su secreto toma solo dos valores, 0 o 1. Eso favorece a los ataques híbridos, que adivinan una parte del secreto y reducen el resto, y permite reescalar el retículo para aprovechar que el secreto es pequeño. Por eso necesita una dimensión mayor que LWE estándar para alcanzar la misma meta: con $n = m = 1196$, el ataque más barato es el dual híbrido, con $2^{128.5}$. Una comprobación con el catálogo completo de ataques del estimador, sobre instancias de dimensión cercana, no encontró ninguno más barato; las variantes híbridas con encuentro a mitad de camino (\textit{meet-in-the-middle}) sobre el secreto binario costaron más de $2^{165}$. Su solidez está en $2^{184.3}$.
 
-ECDSA &
-\todoresult{ataque} &
-\todoresult{condición} &
-\todoresult{mitigación} \\
+\paragraph{Ring-LWE}
+Su clave vive en un anillo de polinomios, con más estructura algebraica que una matriz uniforme. No se conocen ataques que aprovechen esa estructura en estas dimensiones, por lo que se estima como LWE de dimensión 1024; con ruido $\mathrm{CBD}(6)$, el ataque más barato es el primal, con $2^{128.2}$. Su riesgo específico es esa suposición: un avance que explotara la estructura del anillo afectaría a Ring-LWE y no a los candidatos de matriz. Su solidez está en $2^{150.7}$, y su espacio de desafíos, formado por polinomios con 16 coeficientes no nulos, tiene $2^{131.6}$ elementos.
 
-LWE &
-\todoresult{ataque} &
-\todoresult{condición} &
-\todoresult{mitigación} \\
+\paragraph{LWR}
+No muestrea un error aleatorio: lo sustituye por el redondeo de $q = 2^{23}$ a $p = 2^{21}$. Su seguridad se estima modelando ese redondeo como un error uniforme en $\{-1, 0, 1, 2\}$, la heurística habitual en los esquemas basados en LWR, porque las reducciones formales conocidas de LWR a LWE exigen una razón $q/p$ que crece con el número de muestras y que estos parámetros, con $q/p = 4$, no cumplen. La cifra de $2^{128.6}$ del ataque dual híbrido depende, por tanto, de esa heurística, que es su riesgo específico. Su solidez está en $2^{167.9}$.
 
-LWE &
-\todoresult{ataque} &
-\todoresult{condición} &
-\todoresult{mitigación} \\
-
-Binary-LWE &
-\todoresult{ataque} &
-\todoresult{condición} &
-\todoresult{mitigación} \\
-
-Ring-LWE &
-\todoresult{ataque} &
-\todoresult{condición} &
-\todoresult{mitigación} \\
-
-LWR &
-\todoresult{ataque} &
-\todoresult{condición} &
-\todoresult{mitigación} \\
-
-ML-ZKAuth &
-\todoresult{ataque} & % Replay attacks, intercepción por intermediarios, timing attacks, canal lateral, y reducción de retículos
-\todoresult{condición} &
-\todoresult{mitigación} \\
-
-\bottomrule
-\end{longtable}
+\paragraph{ML-ZKAuth}
+Comparte los ataques comunes, con su clave en $2^{128.2}$ (ataque primal), su solidez en $2^{150.7}$ y un espacio de desafíos de $2^{131.1}$ elementos. Como Ring-LWE, se estima como LWE de dimensión 1024, sin aprovechar la estructura algebraica del módulo, y comparte ese riesgo. Su capa de transporte, con los parámetros de ML-KEM-768, está en $2^{174.3}$ y no limita la seguridad (Tabla~\ref{tab:pqlite_dureza}). Los ataques sobre el canal se mitigan dentro del propio protocolo: la interceptación por intermediarios, con la ocultación del token; la repetición, con el ticket de un solo uso, la marca de tiempo y el registro de tickets consumidos; y la sustitución de la cuota del acuerdo de clave, con el cifrado autenticado del token. Los relés en tiempo real quedan cubiertos solo en parte, y los canales laterales y la denegación de servicio quedan fuera del modelo; la Sección~\ref{sec:pqlite-improbables} y la Tabla~\ref{tab:pqlite_amenazas} detallan cada caso.
 
 
 % ============================================================
 \subsection{Seguridad de implementación}
 \label{sec:implementation-security}
 
-Además de la seguridad matemática de cada construcción, se analizaron riesgos
-relacionados con su implementación.
+Además de la seguridad matemática de cada construcción, se analizaron los riesgos relacionados con su implementación. La Tabla~\ref{tab:implementation-security} resume la fuente de aleatoriedad, los retos y valores de un solo uso, la exposición a canales laterales y la validación de parámetros de cada candidato. Los cuatro candidatos de retículos de referencia comparten la misma plantilla de prueba y, con ella, las mismas propiedades de implementación, por lo que ocupan una sola fila.
 
 \begin{table}[H]
 \centering
-\caption{Aspectos de seguridad operacional de las implementaciones.}
+\caption{Aspectos de seguridad de las implementaciones evaluadas.}
 \label{tab:implementation-security}
 \small
-\begin{tabularx}{\textwidth}{lCCCCY}
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.4cm}YYYY}
 \toprule
 \textbf{Protocolo} &
-\textbf{RNG} &
-\textbf{Nonce} &
-\textbf{Side channels} &
-\textbf{Parámetros} &
-\textbf{Observaciones} \\
+\textbf{Aleatoriedad} &
+\textbf{Reto y valores de un solo uso} &
+\textbf{Canales laterales} &
+\textbf{Parámetros} \\
 \midrule
 
-ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+ECDSA &
+Sistema operativo (reto); OpenSSL (clave y $k$) &
+Reto de 32~bytes del verificador; $k$ nuevo en cada firma &
+Código compilado de OpenSSL; no se analizó &
+Fijos: P-256, SHA-256 y reto de 32~bytes \\
+
+LWE, Binary-LWE, Ring-LWE y LWR &
+Sistema operativo (claves, máscaras y retos); nunca el generador de NumPy &
+Reto de 32~bytes ligado al resumen de la clave pública; máscara nueva en cada intento &
+Python con NumPy, sin tiempo constante; el número de intentos no depende de la clave &
+Rechaza valores desconocidos, espacios de desafíos menores que $2^{128}$, máscaras que no ocultan el secreto y aceptación menor que 0.05 \\
+
+ML-ZKAuth &
+Sistema operativo (claves, máscaras, tickets y \textit{nonces}); OpenSSL (ML-KEM) &
+Ticket de 256 bits, marca de tiempo y registro de consumo; \textit{nonce} de AES-GCM de 96 bits &
+Igual que los candidatos de referencia (Sección~\ref{sec:pqlite-limitaciones}) &
+Lo mismo y, además, exige que $2\gamma_2$ divida a $q' - 1$; transporte fijo \\
 
 \bottomrule
 \end{tabularx}
 \end{table}
+
+Además, antes de cualquier medición, el benchmark somete a cada candidato a una verificación de conformidad con el contrato común. Comprueba que sus parámetros, claves y mensajes se puedan serializar, que los retos sean nuevos en cada sesión, que una autenticación válida se acepte, que se rechacen una respuesta repetida con un reto nuevo, una respuesta alterada y una respuesta verificada con otra clave pública, y que ninguna operación modifique sus entradas. Un candidato que falle cualquiera de estas pruebas queda excluido de la comparación; los seis candidatos las superaron en la corrida oficial.
 
 
 % ============================================================

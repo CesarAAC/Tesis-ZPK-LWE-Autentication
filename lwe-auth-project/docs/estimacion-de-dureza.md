@@ -84,7 +84,7 @@ Las pruebas son Fiat–Shamir con abortos. Un falsificador que gana sin conocer 
 | `proposed_lwe` | `[A' | I | t]` | 1024 × 2304 | `max(γ₁ − β, γ₂ + 1) = 131 072 − 138 = 130 934` |
 | `standard_lwe` | `[A | I | B]` | `m × (n + m + ℓ)` = 1116 × 2360 | `γ − κ·η = 131 010` |
 | `binary_lwe` | `[A | I | B]` | 1196 × 2520 | `γ − κ = 131 041` |
-| `lwr` | `[A | I | B̃]` | 1112 × 2352 | `γ − κ·max(η, q/2p) = 131 010` |
+| `lwr` | `[A | I | B̃]` | 1112 × 2352 | `max(γ − κ·η, γ − κ·q/2p) = 131 010` |
 | `ring_lwe` | `[a | 1 | b]` | 1024 × 3072 | `γ − κ·η = 131 072 − 96 = 130 976` |
 
 La cota es la norma de una respuesta aceptada: lo que el verificador deja pasar. En los cinco la solidez queda al menos 22 bits por encima de la clave, así que no limita.

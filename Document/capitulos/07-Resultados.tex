@@ -6,7 +6,7 @@
 
 \begin{table}[H]
 \centering
-\caption{Tiempo de generación de claves.}
+\caption{Tiempo de generación de claves, en milisegundos.}
 \label{tab:keygen-time}
 \small
 \begin{tabular}{lrrrrrr}
@@ -18,20 +18,20 @@
 \textbf{P95} &
 \textbf{P99} &
 \textbf{Máx.} \\
-&
-\multicolumn{6}{c}{\textbf{ms}} \\
 \midrule
 
-ECDSA       & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE         & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Binary-LWE  & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Ring-LWE    & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWR         & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE propio  & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+ECDSA      & 0.0180 & 0.0143 & 0.0148 & 0.0395 & 0.101 & 0.138 \\
+LWE        & 17.36 & 17.24 & 0.639 & 18.47 & 19.33 & 21.43 \\
+Binary-LWE & 15.58 & 15.46 & 0.713 & 16.31 & 17.47 & 22.78 \\
+Ring-LWE   & 0.472 & 0.463 & 0.0496 & 0.566 & 0.612 & 0.828 \\
+LWR        & 15.41 & 15.13 & 1.126 & 16.87 & 18.19 & 24.59 \\
+ML-ZKAuth  & 0.812 & 0.785 & 0.0929 & 0.998 & 1.133 & 1.287 \\
 
 \bottomrule
 \end{tabular}
 \end{table}
+
+Los resultados de esta sección corresponden a la corrida oficial descrita en la Sección~\ref{sec:reproducibility}, con 200 mediciones por operación y candidato. Los tres candidatos de matriz (LWE, Binary-LWE y LWR) generan sus claves en 15 a 17~ms, porque calculan el producto de una matriz pública de más de mil filas por las 128 columnas del secreto. Los dos candidatos sobre anillos generan las suyas en menos de 1~ms: 0.47~ms Ring-LWE y 0.81~ms ML-ZKAuth. ECDSA lo hace en 0.018~ms. La configuración del sistema, que se ejecuta una vez por despliegue, cuesta entre 11 y 14~ms en los candidatos de matriz, que muestrean y codifican una matriz pública de más de un millón de coeficientes, y menos de 0.1~ms en los demás (Figura~\ref{fig:auth-time-comparison}).
 
 
 % ============================================================
@@ -58,59 +58,92 @@ LWE propio  & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \t
 \textbf{auth/s} \\
 \midrule
 
-ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+ECDSA      & 0.0009 & 0.0320 & 0.0438 & 0.0728 & 13\,740 \\
+LWE        & 0.0387 & 6.870 & 6.626 & 13.41 & 74.6 \\
+Binary-LWE & 0.0504 & 7.539 & 7.848 & 15.53 & 64.4 \\
+Ring-LWE   & 0.0273 & 4.985 & 0.788 & 5.849 & 171.0 \\
+LWR        & 0.0718 & 8.596 & 8.201 & 15.68 & 63.8 \\
+ML-ZKAuth  & 0.0363 & 9.739 & 0.978 & 9.723 & 102.8 \\
 
 \bottomrule
 \end{tabularx}
 \end{table}
 
+El tiempo total se mide en una autenticación completa independiente de las mediciones por etapa, con un reto nuevo, de modo que no coincide exactamente con la suma de las tres columnas anteriores. La diferencia es mayor en ML-ZKAuth (9.723~ms frente a 10.753~ms de la suma), porque su probador repite un número aleatorio de intentos (Sección~\ref{sec:pqlite-mascara}) y cada medición toma una muestra distinta de ese número. El \textit{throughput} es secuencial: el número de autenticaciones dividido por la suma de sus tiempos, sobre las 200 autenticaciones completas, y no representa la capacidad concurrente de un servidor.
+
 
 % ============================================================
 \subsubsection{Distribución de los tiempos}
 
-La Figura~\ref{fig:auth-time-comparison} presenta el tiempo medio requerido para
-completar una autenticación.
+La Figura~\ref{fig:auth-time-comparison} compara, para cada protocolo, el tiempo medio de la
+configuración del sistema, del registro (generación de claves) y de una autenticación
+completa, y la Figura~\ref{fig:auth-stage-comparison} desglosa la autenticación en sus
+etapas.
 
 \begin{figure}[H]
 \centering
-
 \begin{tikzpicture}
 \begin{axis}[
     ybar,
-    width=0.95\textwidth,
-    height=7cm,
-    ylabel={Tiempo de autenticación (ms)},
-    symbolic x coords={ECDSA,LWE,Binary-LWE,Ring-LWE,LWR,LWE propio},
+    bar width=7pt,
+    width=0.98\textwidth,
+    height=7.5cm,
+    ylabel={Tiempo medio (ms)},
+    symbolic x coords={ECDSA,LWE,Binary-LWE,Ring-LWE,LWR,ML-ZKAuth},
     xtick=data,
     x tick label style={rotate=25,anchor=east},
+    ymin=0, ymax=21,
+    enlarge x limits=0.1,
     nodes near coords,
-    ymin=0,
-    enlarge x limits=0.1
+    nodes near coords style={font=\tiny, rotate=90, anchor=west, /pgf/number format/fixed, /pgf/number format/precision=2},
+    legend style={at={(0.5,1.03)}, anchor=south, legend columns=-1, font=\small, draw=none},
+    legend image code/.code={\draw[#1] (0cm,-0.1cm) rectangle (0.25cm,0.15cm);},
 ]
-\addplot coordinates {
-    (ECDSA,0)
-    (LWE,0)
-    (Binary-LWE,0)
-    (Ring-LWE,0)
-    (LWR,0)
-    (LWE propio,0)
-};
+\addplot[fill=gray!35, draw=gray!70!black] coordinates {(ECDSA,0.0008) (LWE,11.0911) (Binary-LWE,13.7498) (Ring-LWE,0.0201) (LWR,11.2760) (ML-ZKAuth,0.0825)};
+\addplot[fill=blue!35, draw=blue!60!black] coordinates {(ECDSA,0.0180) (LWE,17.3642) (Binary-LWE,15.5829) (Ring-LWE,0.4724) (LWR,15.4110) (ML-ZKAuth,0.8118)};
+\addplot[fill=red!45, draw=red!60!black] coordinates {(ECDSA,0.0728) (LWE,13.4096) (Binary-LWE,15.5297) (Ring-LWE,5.8489) (LWR,15.6769) (ML-ZKAuth,9.7233)};
+\legend{Configuración del sistema, Registro (generación de claves), Autenticación completa}
 \end{axis}
 \end{tikzpicture}
-
-\caption{Comparación del tiempo medio de autenticación.
-Reemplazar los valores cero por los resultados experimentales.}
+\caption{Tiempo medio de configuración del sistema, de registro y de autenticación por protocolo (200 mediciones de cada operación por candidato). La configuración se ejecuta una vez por despliegue; el registro, una vez por usuario; la autenticación, en cada inicio de sesión.}
 \label{fig:auth-time-comparison}
 \end{figure}
 
-Los resultados muestran que \todoresult{describir los resultados observados sin
-interpretarlos todavía}. La diferencia entre \todoresult{protocolos relevantes} fue
-de \todoresult{valor}, mientras que \todoresult{resultado adicional}.
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    bar width=5.5pt,
+    width=0.98\textwidth,
+    height=7.5cm,
+    ymode=log,
+    ymin=0.0005, ymax=40,
+    log origin=infty,
+    ylabel={Tiempo medio (ms, escala logarítmica)},
+    symbolic x coords={ECDSA,LWE,Binary-LWE,Ring-LWE,LWR,ML-ZKAuth},
+    xtick=data,
+    x tick label style={rotate=25,anchor=east},
+    enlarge x limits=0.1,
+    legend style={at={(0.5,1.03)}, anchor=south, legend columns=-1, font=\small, draw=none},
+    legend image code/.code={\draw[#1] (0cm,-0.1cm) rectangle (0.25cm,0.15cm);},
+]
+\addplot[fill=gray!35, draw=gray!70!black] coordinates {(ECDSA,0.0009) (LWE,0.0387) (Binary-LWE,0.0504) (Ring-LWE,0.0273) (LWR,0.0718) (ML-ZKAuth,0.0363)};
+\addplot[fill=green!40!gray!60, draw=green!40!black] coordinates {(ECDSA,0.0320) (LWE,6.8699) (Binary-LWE,7.5392) (Ring-LWE,4.9847) (LWR,8.5964) (ML-ZKAuth,9.7389)};
+\addplot[fill=blue!35, draw=blue!60!black] coordinates {(ECDSA,0.0438) (LWE,6.6261) (Binary-LWE,7.8476) (Ring-LWE,0.7877) (LWR,8.2008) (ML-ZKAuth,0.9779)};
+\addplot[fill=red!45, draw=red!60!black] coordinates {(ECDSA,0.0728) (LWE,13.4096) (Binary-LWE,15.5297) (Ring-LWE,5.8489) (LWR,15.6769) (ML-ZKAuth,9.7233)};
+\legend{Reto, Respuesta, Verificación, Total}
+\end{axis}
+\end{tikzpicture}
+\caption{Tiempo medio de cada etapa de la autenticación por protocolo (200 autenticaciones por candidato). El eje vertical es logarítmico, para que se vean a la vez los tiempos del reto, de centésimas de milisegundo, y los de la respuesta, de varios milisegundos. El total se mide en una autenticación completa independiente (Tabla~\ref{tab:authentication-time}).}
+\label{fig:auth-stage-comparison}
+\end{figure}
+
+Los resultados muestran tres grupos. ECDSA completa una autenticación en 0.073~ms de media. Los candidatos de retículos tardan entre 5.85~ms (Ring-LWE) y 15.68~ms (LWR), entre 80 y 215 veces más que ECDSA. Dentro de ellos, los tres candidatos de matriz tardan entre 13.4 y 15.7~ms y reparten el costo casi por igual entre la respuesta y la verificación, mientras que los dos candidatos sobre anillos verifican en menos de 1~ms y concentran el costo en la respuesta: en ML-ZKAuth, la respuesta cuesta unas 10 veces más que la verificación.
+
+La diferencia entre ML-ZKAuth (9.72~ms) y Ring-LWE (5.85~ms), los dos candidatos de retículos más rápidos, fue de 3.87~ms; ML-ZKAuth fue 1.38 veces más rápido que LWE estándar. Los dos candidatos sobre anillos presentan además la mayor dispersión, porque su probador repite un número aleatorio de intentos: ML-ZKAuth tiene una mediana de 7.53~ms y un percentil 95 de 24.1~ms, y Ring-LWE, una mediana de 4.03~ms y un percentil 95 de 14.9~ms. LWR registró una medición aislada de 234~ms, que eleva su media y su desviación; su mediana, 13.48~ms, es comparable a la de LWE.
+
+Estas diferencias reflejan tanto los algoritmos como sus implementaciones: ECDSA usa la biblioteca \texttt{cryptography}, que ejecuta código compilado de OpenSSL, mientras que los candidatos de retículos son prototipos en Python con NumPy (Sección~\ref{sec:threats-validity}).
 
 
 % ============================================================
@@ -119,15 +152,15 @@ de \todoresult{valor}, mientras que \todoresult{resultado adicional}.
 
 \begin{table}[H]
 \centering
-\caption{Consumo de memoria durante las operaciones criptográficas.}
+\caption{Consumo de memoria durante las operaciones criptográficas: pico medio de asignaciones de Python por operación y estado persistente por usuario.}
 \label{tab:memory-results}
 \small
 \begin{tabularx}{\textwidth}{lCCCC}
 \toprule
 \textbf{Protocolo} &
-\textbf{RAM media} &
-\textbf{RAM pico} &
-\textbf{Estado temporal} &
+\textbf{Configuración} &
+\textbf{Generación de claves} &
+\textbf{Autenticación} &
 \textbf{Estado persistente} \\
 &
 \textbf{KB} &
@@ -136,16 +169,20 @@ de \todoresult{valor}, mientras que \todoresult{resultado adicional}.
 \textbf{bytes/usuario} \\
 \midrule
 
-ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+ECDSA      & 58.9 & 54.4 & 44.1 & 592 \\
+LWE        & 30\,441.7 & 22\,848.6 & 16\,866.1 & 1\,142\,874 \\
+Binary-LWE & 34\,956.5 & 25\,978.6 & 19\,193.7 & 1\,046\,198 \\
+Ring-LWE   & 56.1 & 111.7 & 154.1 & 8\,290 \\
+LWR        & 30\,229.6 & 22\,697.6 & 16\,747.2 & 1\,138\,786 \\
+ML-ZKAuth  & 55.4 & 921.6 & 945.1 & 5\,386 \\
 
 \bottomrule
 \end{tabularx}
 \end{table}
+
+Las tres primeras columnas recogen el pico de memoria asignada por Python durante cada operación, medido con \texttt{tracemalloc}, como media de 20 repeticiones. El incremento de la memoria residente (RSS) del proceso, que el benchmark también registra, fue nulo durante la autenticación en los seis candidatos: el proceso reutiliza memoria que ya había reservado durante la configuración y el calentamiento. Solo se observaron incrementos de RSS al configurar y generar claves en los candidatos de matriz, de hasta unos 21~MB en la configuración de Binary-LWE. Las operaciones más simples, como la emisión del reto, registran unos 55~KB en todos los candidatos, que corresponden sobre todo a la propia instrumentación.
+
+Durante la autenticación, los candidatos de matriz asignan entre 16.4 y 18.7~MB, porque operan con su matriz pública completa; ML-ZKAuth asigna unos 0.9~MB, Ring-LWE unos 0.15~MB y ECDSA unos 44~KB. El estado persistente es la suma de la clave pública, que guarda el servidor, y de la clave privada, que guarda el cliente.
 
 
 % ============================================================
@@ -171,16 +208,18 @@ LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
 \textbf{bytes} \\
 \midrule
 
-ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+ECDSA      & 254 & 338 & 0 & 592 \\
+LWE        & 761\,864 & 381\,010 & 6\,642\,953 & 1\,142\,874 \\
+Binary-LWE & 816\,480 & 229\,718 & 7\,629\,396 & 1\,046\,198 \\
+Ring-LWE   & 5\,472 & 2\,818 & 6\,002 & 8\,290 \\
+LWR        & 759\,136 & 379\,650 & 6\,595\,459 & 1\,138\,786 \\
+ML-ZKAuth  & 3\,936 & 1\,450 & 2\,262 & 5\,386 \\
 
 \bottomrule
 \end{tabularx}
 \end{table}
+
+Los tamaños son los de la serialización JSON canónica que mide el benchmark, con los datos binarios codificados en Base64; por eso superan en cerca de un tercio a los tamaños binarios. Por ejemplo, la respuesta de ML-ZKAuth ocupa 4\,721 bytes frente a los 3\,524 bytes del token binario (Sección~\ref{sec:pqlite-token}). La columna \textit{Total registro} suma la clave pública y la privada de un usuario; los parámetros públicos se comparten entre todos los usuarios de un despliegue y se distribuyen una sola vez. Los candidatos de matriz tienen claves públicas de 759 a 816~KB y parámetros públicos de 6.6 a 7.6~MB, mientras que los dos candidatos sobre anillos tienen claves públicas de 3.9 y 5.5~KB.
 
 
 % ============================================================
@@ -205,15 +244,53 @@ LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
 \textbf{bytes} &
 \textbf{bytes} &
 \textbf{bytes} &
-\\
+\textbf{medidos} \\
 \midrule
 
-ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+ECDSA      & 106 & 161 & 99 & 267 & 2 \\
+LWE        & 113 & 12\,028 & 113 & 12\,141 & 2 \\
+Binary-LWE & 111 & 12\,882 & 109 & 12\,993 & 2 \\
+Ring-LWE   & 109 & 11\,048 & 105 & 11\,157 & 2 \\
+LWR        & 104 & 11\,979 & 95 & 12\,083 & 2 \\
+ML-ZKAuth  & 133 & 4\,777 & 113 & 4\,910 & 2 \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+El benchmark mide los dos mensajes del contrato común (Sección~\ref{sec:benchmark-comparability}), el reto y la respuesta, que forman un viaje de ida y vuelta, cada uno dentro de un sobre canónico con el tipo de mensaje, el protocolo y la carga criptográfica. La columna \textit{Metadata} es el tamaño de esos sobres sin la carga criptográfica. Las cifras no incluyen cabeceras HTTP, TLS ni TCP/IP. ECDSA transmite 267 bytes; los candidatos de matriz y Ring-LWE, entre 11.2 y 13.0~KB; ML-ZKAuth, 4\,910 bytes, 2.3 veces menos que Ring-LWE y 18.4 veces más que ECDSA.
+
+Un inicio de sesión completo tiene además una solicitud inicial del cliente y un aviso del resultado, con lo que son cuatro mensajes en dos viajes de ida y vuelta. Esos dos mensajes existen en los seis protocolos y no dependen de su criptografía, por lo que se excluyen de todos por igual; en ML-ZKAuth son el \textsf{Hello} y el resultado (Tabla~\ref{tab:pqlite_mensajes}). El acuerdo de clave de sesión de ML-ZKAuth queda fuera del contrato y no se mide: si se usa, el token crece 1\,152 bytes por la cuota $\mathbf{b}_{\mathcal{C}}$ y el resultado lleva 1\,212 bytes con $(\mathbf{b}_{\mathcal{S}}, \mathbf{v})$ (Sección~\ref{sec:pqlite-tamanos}).
+
+La Tabla~\ref{tab:network-projection} proyecta el tiempo del reto y la respuesta en los cinco escenarios de red de la Sección~\ref{sec:metrics}. Con una red rápida domina el cómputo y el orden es el de la Tabla~\ref{tab:authentication-time}; a medida que baja el ancho de banda pesa más el volumen transmitido, y desde el escenario de alta latencia ML-ZKAuth pasa a ser el candidato de retículos más rápido, por delante de Ring-LWE. Un inicio de sesión completo suma el segundo viaje de ida y vuelta, igual para los seis: de 0.2 a 250~ms según el escenario. Con acuerdo de clave, ML-ZKAuth transmite además 2\,364 bytes, que en la red restringida añaden unos 19~ms.
+
+\begin{table}[H]
+\centering
+\caption{Tiempo proyectado del reto y la respuesta por escenario de red, en milisegundos (un viaje de ida y vuelta).}
+\label{tab:network-projection}
+\small
+\begin{tabularx}{\textwidth}{lCCCCC}
+\toprule
+\textbf{Protocolo} &
+\textbf{Local} &
+\textbf{Baja latencia} &
+\textbf{Latencia media} &
+\textbf{Alta latencia} &
+\textbf{Restringida} \\
+&
+0.2~ms; 1\,000~Mbit/s &
+10~ms; 100~Mbit/s &
+50~ms; 25~Mbit/s &
+100~ms; 10~Mbit/s &
+250~ms; 1~Mbit/s \\
+\midrule
+
+ECDSA      & 0.3  & 10.1 & 50.2 & 100.3 & 252.2 \\
+LWE        & 13.8 & 24.4 & 67.4 & 123.2 & 360.6 \\
+Binary-LWE & 15.9 & 26.6 & 69.8 & 126.0 & 369.5 \\
+Ring-LWE   & 6.2  & 16.8 & 59.5 & 114.8 & 345.2 \\
+LWR        & 16.1 & 26.7 & 69.6 & 125.4 & 362.4 \\
+ML-ZKAuth  & 10.0 & 20.1 & 61.3 & 113.7 & 299.0 \\
 
 \bottomrule
 \end{tabularx}
@@ -247,16 +324,18 @@ Si $S_u$ representa el almacenamiento persistente requerido por usuario, entonce
 \textbf{1.000.000 usuarios} \\
 \midrule
 
-ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+ECDSA      & 254~B & 254~kB & 25.4~MB & 254~MB \\
+LWE        & 762~kB & 762~MB & 76.2~GB & 762~GB \\
+Binary-LWE & 816~kB & 816~MB & 81.6~GB & 816~GB \\
+Ring-LWE   & 5.5~kB & 5.5~MB & 547~MB & 5.5~GB \\
+LWR        & 759~kB & 759~MB & 75.9~GB & 759~GB \\
+ML-ZKAuth  & 3.9~kB & 3.9~MB & 394~MB & 3.9~GB \\
 
 \bottomrule
 \end{tabularx}
 \end{table}
+
+La tabla toma como $S_u$ la clave pública serializada, que es lo que el servidor guarda por cada usuario; la clave privada queda en el dispositivo del cliente y los parámetros públicos se guardan una sola vez por despliegue. Con un millón de usuarios, los candidatos de matriz requieren entre 759 y 816~GB, mientras que Ring-LWE y ML-ZKAuth requieren 5.5 y 3.9~GB. ML-ZKAuth guarda además el registro de tickets consumidos, cuyo tamaño no crece con el número de usuarios registrados sino con la tasa de autenticaciones (Sección~\ref{sec:pqlite-registro}).
 
 
 % ============================================================
@@ -314,7 +393,7 @@ $2^{128.6}$ &
 $2^{117.4}$ &
 Core-SVP; dual híbrido, $\beta_{\mathrm{BKZ}} = 440$ \\
 
-LWE propio &
+ML-ZKAuth &
 Module-LWE y SelfTargetMSIS sobre $\mathcal{R}_{q'}$ &
 $2^{128.2}$ &
 $2^{116.3}$ &

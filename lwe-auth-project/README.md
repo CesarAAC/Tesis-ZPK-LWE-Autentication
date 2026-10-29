@@ -11,6 +11,8 @@ Repositorio experimental para comparar, bajo una metodología común y reproduci
 
 El objetivo del repositorio no es producir un “ganador” automático. El framework registra evidencia comparable sobre rendimiento, memoria, tamaños serializados, comunicación, almacenamiento, comportamiento proyectado bajo distintas redes, complejidad de implementación y metadatos de reproducibilidad. Las afirmaciones de seguridad, madurez y arquitectura se almacenan aparte y deben incluir evidencia explícita.
 
+La documentación detallada del código (organización, funcionamiento de cada protocolo, pruebas y cálculo de las métricas) está en [docs/documentacion-del-codigo.md](docs/documentacion-del-codigo.md).
+
 > **Regla principal:** una primitiva matemática no se registra como protocolo completo. Un candidato solo queda disponible para benchmarking cuando implementa el ciclo completo de autenticación y supera las pruebas de conformidad comunes.
 
 ---
@@ -285,7 +287,7 @@ Son los de `benchmarking/configs/default.json`. Las clases tienen sus propios va
 
 # Protocolo propuesto: ML-ZKAuth (`proposed_lwe`)
 
-ML-ZKAuth es el nombre que los autores dieron al protocolo el 10 de octubre de 2026; antes se llamaba ML-ZKAuth.
+ML-ZKAuth es el nombre que los autores dieron al protocolo el 10 de octubre de 2026; antes se llamaba PQLite-Auth v2.
 
 Implementado en `backend/crypto_core/protocols/proposed_lwe.py`. Partió de dos fuentes de verdad criptográficas: el manuscrito de `Document/capitulos/04-Protocolo Propio.tex` y la instrucción de **módulo dual** de los autores (su «Opción A»), que sustituye la prueba de ese manuscrito por Fiat–Shamir con abortos sobre un segundo módulo. Desde el 7 de octubre de 2026 el capítulo 4 está reescrito para describir esta implementación; la tabla de lecturas de abajo explica en qué se aparta del manuscrito original. Supera el *conformance gate* sin modificarlo y entra al benchmark como los demás candidatos.
 

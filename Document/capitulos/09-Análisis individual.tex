@@ -1,35 +1,55 @@
 \subsection{Requisitos operacionales y experiencia de usuario}
 \label{sec:operational-results}
 
+La Tabla~\ref{tab:operational-comparison} resume lo que cada protocolo exige al registrar a un usuario y lo que cliente y servidor deben guardar después. Los tamaños son los serializados de la Tabla~\ref{tab:key-sizes}; los candidatos de matriz comparten las mismas características y ocupan una sola fila.
+
 \begin{table}[H]
 \centering
 \caption{Comparación de requisitos operacionales.}
 \label{tab:operational-comparison}
 \small
-\begin{tabularx}{\textwidth}{lCCCCCY}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.2cm}YYYY}
 \toprule
 \textbf{Protocolo} &
 \textbf{Registro} &
-\textbf{Estado} &
-\textbf{Servidor online} &
-\textbf{Secreto cliente} &
-\textbf{Verif. offline} &
-\textbf{Observaciones} \\
+\textbf{Estado del servidor} &
+\textbf{Qué guarda el cliente} &
+\textbf{Verificación por terceros} \\
 \midrule
 
-ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
+ECDSA &
+Sin parámetros públicos; el cliente envía una clave pública de 254~B &
+Claves públicas y retos pendientes de respuesta &
+Clave privada de 338~B &
+Sí: la firma del reto se verifica con la clave pública \\
+
+LWE, Binary-LWE y LWR &
+El cliente obtiene parámetros de 6.6 a 7.6~MB y envía una clave pública de 759 a 816~KB &
+Igual que ECDSA &
+Clave privada de 230 a 381~KB y los parámetros &
+Sí: la prueba se verifica con la clave pública y el reto \\
+
+Ring-LWE &
+El cliente obtiene parámetros de 6.0~KB y envía una clave pública de 5.5~KB &
+Igual que ECDSA &
+Clave privada de 2.8~KB y los parámetros &
+Sí, como en los anteriores \\
+
+ML-ZKAuth &
+El cliente obtiene $(\rho, vpk)$, de 2.3~KB, y envía una clave pública de 3.9~KB &
+Además, $vsk$ y el registro de tickets consumidos &
+Clave privada de 1.4~KB y $(\rho, vpk)$ &
+Solo el servidor puede leer la prueba; una vez descifrada, cualquiera puede verificarla \\
 
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Desde la perspectiva del usuario final, \todoresult{describir cuáles diferencias son
-visibles para el usuario y cuáles quedan ocultas por la aplicación}.
+Ninguno de los seis funciona sin conexión: en todos, el servidor emite un reto nuevo en cada sesión y debe estar en línea para verificar la respuesta. El registro es un solo paso: el cliente obtiene los parámetros públicos, genera su par de claves y envía la clave pública, que el servidor asocia con su identidad. Un inicio de sesión son cuatro mensajes en dos viajes de ida y vuelta en todos los protocolos, de los que el benchmark mide el reto y la respuesta (Sección~\ref{sec:communication-results}); en ML-ZKAuth, la solicitud inicial (\textsf{Hello}) no lleva el identificador del cliente.
+
+La gestión de claves también es común. Si un dispositivo se pierde o se compromete, el servidor revoca su clave pública y el usuario se registra de nuevo con un par nuevo; los prototipos no implementan revocación ni renovación, que corresponden al despliegue. Cambiar los parámetros públicos invalida todas las claves registradas, porque cada clave pública se calcula con ellos. En ML-ZKAuth eso ocurre al cambiar $\rho$, pero no al renovar $vpk$, que solo exige distribuir la clave nueva a los clientes por un canal auténtico. En madurez, la diferencia es grande. ECDSA está estandarizado en FIPS~186-5 \cite{nist2023fips186} y cuenta con implementaciones consolidadas, como la de OpenSSL que usa el benchmark. ML-ZKAuth combina primitivas estandarizadas, ML-KEM en FIPS~203 \cite{nist2024fips203} y una prueba que sigue la plantilla de Dilithium, estandarizado como ML-DSA en FIPS~204 \cite{nist2024fips204}, pero el protocolo como tal no está estandarizado. Los cuatro candidatos de referencia implementan esquemas conocidos en la literatura, pero no estandarizados, en prototipos propios.
+
+Desde la perspectiva del usuario final, la mayoría de estas diferencias quedan ocultas por la aplicación: en ninguno de los seis el usuario memoriza ni teclea un secreto, y la autenticación es un intercambio automático entre su dispositivo y el servidor. Lo que puede notar es el tiempo de espera. Sumando a la proyección de la Tabla~\ref{tab:network-projection} el segundo viaje de ida y vuelta de un inicio de sesión completo (Sección~\ref{sec:communication-results}), en una red de latencia media (50~ms de ida y vuelta y 25~Mbit/s) la espera va de 100.2~ms (ECDSA) a 119.8~ms (Binary-LWE), con ML-ZKAuth en 111.3~ms; en una red restringida (250~ms y 1~Mbit/s), de 502.2 a 619.5~ms, con ML-ZKAuth en 549.0~ms. En ambos casos la latencia de la red pesa más que el cómputo, y la diferencia entre candidatos es menor que 120~ms. La diferencia que sí sería visible es el registro con un candidato de matriz: en la red restringida, obtener sus parámetros públicos tomaría entre 52.8 y 61.0~s, y enviar su clave pública, entre 6.1 y 6.5~s más, frente a menos de 0.1~s en total con Ring-LWE o ML-ZKAuth. Los parámetros podrían incluirse en la aplicación, a costa de aumentar su tamaño en 6.6 a 7.6~MB.
 
 
 % ============================================================
@@ -37,34 +57,13 @@ visibles para el usuario y cuáles quedan ocultas por la aplicación}.
 \label{sec:trust-model}
 
 En lugar de tratar la centralización como una propiedad binaria, se analizan
-explícitamente las dependencias de confianza de cada construcción.
+explícitamente las dependencias de confianza de cada construcción. ECDSA y los cuatro candidatos de retículos de referencia comparten el mismo modelo y se describen juntos.
 
-\begin{table}[H]
-\centering
-\caption{Dependencias de confianza e infraestructura.}
-\label{tab:trust-model}
-\small
-\begin{tabularx}{\textwidth}{lCCCCYY}
-\toprule
-\textbf{Protocolo} &
-\textbf{Autoridad} &
-\textbf{PKI} &
-\textbf{Estado servidor} &
-\textbf{Secreto servidor} &
-\textbf{Compromiso servidor} &
-\textbf{Observaciones} \\
-\midrule
+\paragraph{ECDSA y los candidatos de retículos de referencia}
+No dependen de una autoridad externa ni de una infraestructura de clave pública: la confianza descansa en el registro, en el que el servidor asocia una clave pública con la identidad del usuario, de modo que ese paso debe hacerse por un canal autenticado. El servidor no guarda secretos propios, solo claves públicas y retos pendientes: quien robe su base de datos no puede suplantar a ningún usuario, aunque quien pueda modificarla podría sustituir una clave pública por la suya. Los cuatro candidatos de retículos dependen además de que los parámetros públicos sean auténticos y se hayan generado al azar, porque todas las claves se calculan con ellos y la dureza de sus problemas supone que son uniformes; como se transmiten completos, el cliente debe confiar en que quien los configuró los generó así.
 
-ECDSA      & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Binary-LWE & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-Ring-LWE   & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWR        & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-LWE propio & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} & \todoresult{} \\
-
-\bottomrule
-\end{tabularx}
-\end{table}
+\paragraph{ML-ZKAuth}
+Comparte esas dependencias, pero la de los parámetros se reduce a una semilla: $\mathbf{A}'$ se deriva de $\rho$ con SHAKE128, de modo que basta con que $\rho$ sea auténtica, y, si SHAKE128 se comporta como una función aleatoria, quien elige $\rho$ no controla la estructura de la matriz. Añade, en cambio, una dependencia: el cliente debe tener la clave pública auténtica del servidor, $vpk$. El protocolo no define cómo se distribuye; puede incluirse en la aplicación o certificarse con una infraestructura de clave pública. Con una $vpk$ falsa, un atacante descifraría los tokens, sabría qué cliente se autentica y, como la prueba no depende de $vpk$, podría volver a cifrarla para el servidor legítimo y situarse en medio del acuerdo de clave. El servidor guarda, además, un secreto, $vsk$, y el registro de tickets consumidos. Si $vsk$ se compromete, el atacante puede leer los tokens y suplantar al servidor ante los clientes, aunque no a los clientes ante el servidor (Tabla~\ref{tab:pqlite_amenazas}); si puede modificar el registro, puede borrar entradas y repetir un token ya aceptado dentro de la ventana de 300~s.
 
 % ============================================================
 \subsection{Comparación global}
@@ -84,7 +83,7 @@ identificar visualmente los compromisos existentes entre las diferentes alternat
 
 \textbf{Protocolo} &
 \textbf{Auth. (ms)} &
-\textbf{RAM pico} &
+\textbf{Memoria pico} &
 \textbf{Comunicación} &
 \textbf{Clave pública} &
 \textbf{Clave privada} &
@@ -100,58 +99,19 @@ identificar visualmente los compromisos existentes entre las diferentes alternat
 
 \midrule
 
-ECDSA
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{} \\
-
-LWE
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{} \\
-
-Binary-LWE
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{} \\
-
-Ring-LWE
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{} \\
-
-LWR
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{} \\
-
-LWE propio
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{}
-& \todoresult{} \\
+ECDSA      & 0.0728 & 44.1 & 267 & 254 & 338 & 128.0 \\
+LWE        & 13.41 & 16\,866.1 & 12\,141 & 761\,864 & 381\,010 & 128.0 \\
+Binary-LWE & 15.53 & 19\,193.7 & 12\,993 & 816\,480 & 229\,718 & 128.5 \\
+Ring-LWE   & 5.849 & 154.1 & 11\,157 & 5\,472 & 2\,818 & 128.2 \\
+LWR        & 15.68 & 16\,747.2 & 12\,083 & 759\,136 & 379\,650 & 128.6 \\
+ML-ZKAuth  & 9.723 & 945.1 & 4\,910 & 3\,936 & 1\,450 & 128.2 \\
 
 \bottomrule
 \end{tabular}
 }
 \end{table}
+
+El tiempo es la media de la autenticación completa (Tabla~\ref{tab:authentication-time}); la memoria pico, el pico de asignaciones de Python durante la autenticación (Tabla~\ref{tab:memory-results}); la comunicación y las claves, los tamaños serializados de las Tablas~\ref{tab:communication} y \ref{tab:key-sizes}. La seguridad es la estimación clásica de la Tabla~\ref{tab:security-levels}: Core-SVP para los candidatos de retículos y el valor de referencia de P-256 para ECDSA, que no resiste a un adversario cuántico.
 
 
 % ============================================================
@@ -160,8 +120,8 @@ LWE propio
 
 Una única métrica no permite determinar la conveniencia de una construcción
 criptográfica. Un protocolo puede reducir el tiempo de ejecución a costa de incrementar
-el tamaño de las claves, mientras que otro puede reducir la comunicación aumentando
-la complejidad computacional.
+el tamaño de las claves, mientras que otro puede reducir la comunicación a costa de
+más tiempo de cómputo.
 
 Por esta razón, los resultados se analizan como un conjunto de compromisos entre:
 
@@ -170,22 +130,40 @@ Por esta razón, los resultados se analizan como un conjunto de compromisos entr
      \text{tiempo},
      \text{memoria},
      \text{comunicación},
-     \text{complejidad}).
+     \text{requisitos operacionales}).
 \end{equation}
 
 \subsubsection{Tiempo frente a comunicación}
 
 \begin{figure}[H]
 \centering
-\fbox{
-\parbox[c][6cm][c]{0.90\textwidth}{
-\centering
-\todoresult{Insertar gráfica de dispersión: \\
-eje X = tiempo de autenticación; \\
-eje Y = bytes transmitidos; \\
-tamaño del punto = RAM pico.}
-}}
-\caption{Relación entre tiempo de autenticación, volumen de comunicación y memoria.}
+\begin{tikzpicture}
+\begin{axis}[
+    xmode=log, ymode=log,
+    width=0.92\textwidth, height=7.5cm,
+    xmin=0.03, xmax=300, ymin=100, ymax=40000,
+    xlabel={Tiempo medio de autenticación (ms)},
+    ylabel={Bytes transmitidos por autenticación},
+    grid=major, grid style={gray!25},
+    clip=false,
+    label style={font=\small}, tick label style={font=\small},
+]
+% Tamaño del punto: 0.6 ln(memoria pico en KB) pt.
+\addplot[only marks, mark=*, mark size=2.3pt, color=blue!60!black] coordinates {(0.0728,267)};
+\addplot[only marks, mark=*, mark size=5.8pt, color=blue!60!black, opacity=0.7] coordinates {(13.410,12141)};
+\addplot[only marks, mark=*, mark size=5.9pt, color=blue!60!black, opacity=0.7] coordinates {(15.530,12993)};
+\addplot[only marks, mark=*, mark size=3.0pt, color=blue!60!black] coordinates {(5.849,11157)};
+\addplot[only marks, mark=*, mark size=5.8pt, color=blue!60!black, opacity=0.7] coordinates {(15.677,12083)};
+\addplot[only marks, mark=*, mark size=4.1pt, color=red!70!black] coordinates {(9.723,4910)};
+\node[anchor=west, font=\scriptsize] at (axis cs:0.085,267) {ECDSA (44~KB)};
+\draw[gray] (axis cs:13.410,12141) -- (axis cs:40,24000) node[anchor=west, font=\scriptsize, text=black] {LWE (16\,866~KB)};
+\draw[gray] (axis cs:15.530,12993) -- (axis cs:40,14000) node[anchor=west, font=\scriptsize, text=black] {Binary-LWE (19\,194~KB)};
+\draw[gray] (axis cs:15.677,12083) -- (axis cs:40,8200) node[anchor=west, font=\scriptsize, text=black] {LWR (16\,747~KB)};
+\node[anchor=south east, font=\scriptsize] at (axis cs:5.6,11600) {Ring-LWE (154~KB)};
+\node[anchor=north, font=\scriptsize] at (axis cs:9.723,4300) {ML-ZKAuth (945~KB)};
+\end{axis}
+\end{tikzpicture}
+\caption{Relación entre tiempo de autenticación, volumen de comunicación y memoria. Ambos ejes son logarítmicos; el tamaño de cada punto crece con el pico de memoria asignada durante la autenticación, indicado entre paréntesis.}
 \label{fig:time-bandwidth}
 \end{figure}
 
@@ -195,16 +173,35 @@ tamaño del punto = RAM pico.}
 
 \begin{figure}[H]
 \centering
-\fbox{
-\parbox[c][6cm][c]{0.90\textwidth}{
-\centering
-\todoresult{Insertar gráfica: \\
-eje X = seguridad estimada; \\
-eje Y = tiempo de autenticación.}
-}}
-\caption{Relación entre seguridad estimada y costo computacional.}
+\begin{tikzpicture}
+\begin{axis}[
+    ymode=log,
+    width=0.92\textwidth, height=7.5cm,
+    xmin=127.8, xmax=128.9, ymin=0.03, ymax=60,
+    xlabel={Seguridad clásica estimada (bits)},
+    ylabel={Tiempo medio de autenticación (ms)},
+    xtick={127.8,128.0,128.2,128.4,128.6,128.8},
+    xticklabel style={/pgf/number format/fixed, /pgf/number format/precision=1, /pgf/number format/fixed zerofill, /pgf/number format/use period},
+    grid=major, grid style={gray!25},
+    clip=false,
+    label style={font=\small}, tick label style={font=\small},
+]
+\addplot[only marks, mark=square*, mark size=2.5pt, color=gray!70!black] coordinates {(128.0,0.0728)};
+\addplot[only marks, mark=*, mark size=2.5pt, color=blue!60!black] coordinates {(128.0,13.410) (128.5,15.530) (128.2,5.849) (128.6,15.677)};
+\addplot[only marks, mark=*, mark size=3pt, color=red!70!black] coordinates {(128.2,9.723)};
+\node[anchor=west, font=\scriptsize] at (axis cs:128.02,0.0728) {ECDSA (P-256; roto por un adversario cuántico)};
+\node[anchor=east, font=\scriptsize] at (axis cs:127.98,13.410) {LWE};
+\node[anchor=south, font=\scriptsize] at (axis cs:128.5,17.5) {Binary-LWE};
+\node[anchor=west, font=\scriptsize] at (axis cs:128.22,5.849) {Ring-LWE};
+\node[anchor=west, font=\scriptsize] at (axis cs:128.62,15.677) {LWR};
+\node[anchor=west, font=\scriptsize] at (axis cs:128.22,9.723) {ML-ZKAuth};
+\end{axis}
+\end{tikzpicture}
+\caption{Relación entre seguridad estimada y costo computacional. La seguridad es la estimación clásica de la Tabla~\ref{tab:security-levels} (Core-SVP para los candidatos de retículos); el eje de tiempo es logarítmico.}
 \label{fig:security-performance}
 \end{figure}
+
+Los cinco candidatos de retículos se ajustaron a la misma dureza estimada, entre $2^{128.0}$ y $2^{128.6}$ en Core-SVP, de modo que sus diferencias de costo, de hasta 2.7 veces en el tiempo medio, no se deben a niveles de seguridad distintos sino a su estructura: matrices frente a anillos y la forma del secreto y del error.
 
 
 \subsection{Discusión}
@@ -214,22 +211,22 @@ Los experimentos muestran que no existe necesariamente una alternativa que optim
 simultáneamente todas las dimensiones estudiadas.
 
 Desde el punto de vista de rendimiento,
-\todoresult{hallazgo}.
+ECDSA autentica entre 80 y 215 veces más rápido que los candidatos de retículos en este entorno. Entre estos, los construidos sobre anillos son los más rápidos (Ring-LWE, 5.85~ms, y ML-ZKAuth, 9.72~ms), y los de matriz tardan entre 13.4 y 15.7~ms.
 
 Respecto al consumo de memoria,
-\todoresult{hallazgo}.
+los candidatos de matriz asignan entre 16.4 y 18.7~MB por autenticación, porque operan con su matriz pública completa, frente a unos 0.15~MB de Ring-LWE, 0.9~MB de ML-ZKAuth y 44~KB de ECDSA.
 
 En términos de comunicación,
-\todoresult{hallazgo}.
+ML-ZKAuth transmite 4\,910 bytes por autenticación, la menor cantidad entre los candidatos de retículos (entre 2.3 y 2.6 veces menos que los demás), aunque 18.4 veces más que los 267 bytes de ECDSA.
 
 Respecto a la seguridad,
-\todoresult{hallazgo}.
+los cinco candidatos de retículos tienen la misma dureza estimada, entre $2^{128.0}$ y $2^{128.6}$ en el modelo Core-SVP clásico y entre $2^{116.3}$ y $2^{117.9}$ en el cuántico, mientras que ECDSA ofrece 128 bits clásicos y ninguna resistencia frente a un adversario cuántico (Sección~\ref{sec:security-evaluation}).
 
-En términos de complejidad de implementación y despliegue,
-\todoresult{hallazgo}.
+En términos de despliegue,
+los candidatos de matriz obligan a distribuir parámetros públicos de 6.6 a 7.6~MB y a guardar unos 0.8~MB por usuario en el servidor, mientras que los candidatos sobre anillos trabajan con unos pocos kilobytes. ML-ZKAuth añade además estado en el servidor: la clave privada del KEM y el registro de tickets consumidos (Sección~\ref{sec:pqlite-registro}).
 
 Estos resultados evidencian un compromiso entre
-\todoresult{trade-offs principales}.
+resistencia cuántica y costo, porque los candidatos de retículos pagan con tiempo, memoria y tamaño la protección frente a un adversario cuántico que ECDSA no tiene, y, dentro de los candidatos de retículos, entre estructura algebraica y tamaño: los candidatos sobre anillos reducen claves, parámetros y memoria en varios órdenes de magnitud frente a los de matriz, con la misma dureza estimada.
 
 
 % ============================================================
@@ -239,11 +236,11 @@ Estos resultados evidencian un compromiso entre
 ECDSA constituye el punto de referencia utilizado durante la evaluación.
 
 Frente a esta alternativa, las construcciones basadas en retículos presentan
-\todoresult{ventajas observadas}, mientras que presentan costos adicionales asociados
-con \todoresult{desventajas observadas}.
+resistencia estimada frente a adversarios cuánticos, con una dureza de $2^{116.3}$ a $2^{117.9}$ en el modelo Core-SVP cuántico, mientras que presentan costos adicionales asociados
+con el tiempo de autenticación, entre 80 y 215 veces mayor en este entorno, la comunicación, entre 18 y 49 veces mayor, y el tamaño de las claves.
 
 En particular,
-\todoresult{resultado cuantitativo importante}.
+una autenticación de ML-ZKAuth tarda 9.72~ms frente a 0.073~ms de ECDSA y transmite 4\,910 bytes frente a 267. Parte de la diferencia de tiempo se debe a la implementación y no al algoritmo: ECDSA se ejecuta en código compilado de OpenSSL, mientras que los candidatos de retículos son prototipos en Python (Sección~\ref{sec:threats-validity}).
 
 
 % ============================================================
@@ -251,19 +248,19 @@ En particular,
 \label{subsec:lwe-comparison}
 
 Las variantes evaluadas muestran diferencias significativas en
-\todoresult{métricas relevantes}.
+tiempo, memoria, tamaño de las claves y parámetros públicos, más que en comunicación, que está entre 11.2 y 13.0~KB para las cuatro.
 
 LWE estándar presentó
-\todoresult{resultado}.
+13.41~ms por autenticación, 16.5~MB de memoria asignada, una clave pública de 762~KB y parámetros públicos de 6.6~MB.
 
 Binary-LWE presentó
-\todoresult{resultado}.
+la clave privada más pequeña de los candidatos de matriz (230~KB frente a 381~KB), gracias a su secreto binario, pero también la dimensión mayor que ese secreto exige ($n = 1196$), que se traduce en la clave pública, los parámetros (7.6~MB), la memoria y la comunicación más grandes, y en un tiempo de 15.53~ms.
 
 Ring-LWE presentó
-\todoresult{resultado}.
+la autenticación más rápida de los candidatos de retículos (5.85~ms de media y 4.03~ms de mediana), la menor memoria (0.15~MB) y claves de pocos kilobytes, con una dispersión alta de los tiempos (percentil 95 de 14.9~ms).
 
 LWR presentó
-\todoresult{resultado}.
+tiempos y tamaños similares a los de LWE estándar (15.68~ms de media, 13.48~ms de mediana y una clave pública de 759~KB), sin muestrear el error de la clave, que sustituye por un redondeo determinista.
 
 Estas diferencias permiten observar cómo modificaciones en la representación del
 secreto, la estructura algebraica o el mecanismo utilizado para introducir
@@ -278,22 +275,22 @@ El protocolo propuesto debe analizarse utilizando exactamente los mismos criteri
 las demás alternativas.
 
 Los resultados muestran que
-\todoresult{hallazgo principal}.
+ML-ZKAuth autentica en 9.72~ms de media (7.53~ms de mediana), con la menor comunicación de los candidatos de retículos, 4\,910 bytes, y con claves de 3.9~KB (pública) y 1.4~KB (privada), a la misma dureza estimada que los demás ($2^{128.2}$ en Core-SVP).
 
 Su mayor ventaja observada corresponde a
-\todoresult{ventaja}.
+el tamaño: la menor comunicación y la menor clave pública de los candidatos de retículos, con parámetros públicos de solo 2.3~KB. A ello se suman la ocultación del token y el acuerdo de clave de sesión, que los demás candidatos no ofrecen.
 
 Su principal costo o limitación corresponde a
-\todoresult{limitación}.
+el tiempo del probador: como necesita en promedio unos 13 intentos por prueba, la respuesta concentra el costo (9.74~ms frente a 0.98~ms de la verificación) y el tiempo varía mucho entre autenticaciones (percentil 95 de 24.1~ms). Además, el servidor debe guardar estado: la clave privada del KEM y el registro de tickets consumidos.
 
 Frente a las demás variantes LWE,
-\todoresult{comparación}.
+es entre 1.38 y 1.61 veces más rápido que los candidatos de matriz y 1.66 veces más lento que Ring-LWE; transmite entre 2.3 y 2.6 veces menos bytes que todos ellos, y asigna entre 18 y 20 veces menos memoria que los candidatos de matriz, aunque unas 6 veces más que Ring-LWE.
 
 Frente a ECDSA,
-\todoresult{comparación}.
+es unas 134 veces más lento en este entorno y transmite 18.4 veces más bytes, pero, según las estimaciones, resiste a un adversario cuántico, que rompe ECDSA.
 
 Por tanto, los resultados sugieren que el protocolo
-\todoresult{interpretación prudente basada exclusivamente en los resultados obtenidos}.
+es una alternativa poscuántica competitiva en tamaño frente a los demás candidatos de retículos evaluados, con un costo de tiempo intermedio entre ellos. Su comparación de tiempo con ECDSA debe leerse con cautela: ECDSA usa una implementación compilada y madura, y la de ML-ZKAuth es un prototipo en Python sin NTT ni código compilado.
 
 
 % ============================================================
@@ -310,7 +307,13 @@ planificación del procesador, cachés y otros factores externos. Para reducir e
 efecto se utilizaron múltiples repeticiones, iteraciones de calentamiento y un entorno
 experimental controlado.
 
-\todoresult{Agregar otras amenazas internas identificadas.}
+Además, se identificaron las siguientes amenazas internas:
+\begin{itemize}
+    \item \textbf{Implementaciones no equivalentes.} ECDSA usa la biblioteca \texttt{cryptography}, que ejecuta código compilado de OpenSSL; ML-ZKAuth usa la misma biblioteca para ML-KEM y AES, y la aritmética de retículos de los cinco candidatos está escrita en Python con NumPy, sin NTT. Las diferencias de tiempo frente a ECDSA mezclan, por tanto, algoritmo e implementación.
+    \item \textbf{Tiempos con mucha varianza.} El número de intentos de los probadores con muestreo por rechazo es aleatorio, de modo que la media de esos candidatos depende de la muestra; por eso se informan también la mediana y los percentiles.
+    \item \textbf{Mediciones aisladas.} LWR registró una autenticación de 234~ms, muy por encima del resto de sus mediciones (su percentil 99 es de 29.8~ms); afecta a su media y su desviación, pero no a su mediana.
+    \item \textbf{Memoria residente.} El incremento de RSS no capta las asignaciones que reutilizan memoria ya reservada por el proceso, y fue nulo durante la autenticación; por eso la comparación de memoria se basa en el pico de asignaciones de Python, que a su vez no ve toda la memoria nativa de las bibliotecas compiladas.
+\end{itemize}
 
 
 \subsubsection{Validez externa}
@@ -322,7 +325,7 @@ los valores absolutos pueden variar al utilizar hardware diferente.
 Sin embargo, el diseño experimental busca permitir la reproducción del procedimiento
 en otros entornos.
 
-\todoresult{Agregar otras amenazas externas.}
+En particular, los experimentos se ejecutaron en un contenedor sobre la máquina virtual de WSL2 de Windows (Sección~\ref{sec:experimental-environment}); otro sistema operativo, otro procesador o una implementación en hardware dedicado darían valores absolutos distintos. Además, los tamaños medidos son los de la serialización JSON con Base64; una codificación binaria los reduciría en cerca de un 25\,\%.
 
 
 \subsubsection{Validez de constructo}
@@ -331,9 +334,11 @@ Las métricas utilizadas representan diferentes dimensiones de eficiencia y
 desplegabilidad, pero ninguna métrica individual captura completamente la calidad de
 un protocolo criptográfico.
 
-En particular, indicadores como líneas de código, cantidad de dependencias o número de
-parámetros deben interpretarse únicamente como aproximaciones a la complejidad de
-implementación y no como medidas absolutas de dificultad.
+En particular, los tiempos de red de las Secciones~\ref{sec:communication-results} y
+\ref{sec:operational-results} son proyecciones y no mediciones: suman los viajes de ida y vuelta y el tiempo de transmisión
+de los bytes medidos, sin el establecimiento de la conexión, las cabeceras de TCP, TLS o HTTP, la
+congestión ni las retransmisiones, por lo que subestiman el tiempo que vería un usuario
+en una red real.
 
 
 \subsubsection{Limitaciones de la estimación de seguridad}
@@ -341,8 +346,8 @@ implementación y no como medidas absolutas de dificultad.
 Las estimaciones de seguridad dependen de los modelos de ataque, parámetros y
 herramientas disponibles al momento de realizar el estudio.
 
-Las estimaciones de la Sección~\ref{sec:security-evaluation} se obtuvieron con el
-\textit{lattice-estimator} (\textit{commit} \texttt{53da598}) en el modelo de costo Core-SVP,
+Las estimaciones de la Sección~\ref{sec:security-evaluation} se obtuvieron en el modelo de
+costo Core-SVP con el \textit{lattice-estimator} (\textit{commit} \texttt{53da598}),
 validado contra los tamaños de bloque publicados para Kyber512, Kyber768 y Dilithium2
 (Sección~\ref{sec:estimacion}). Sus supuestos y limitaciones son:
 
@@ -385,12 +390,14 @@ proyecto conserva:
 El experimento correspondiente a este documento fue ejecutado utilizando el commit:
 
 \begin{center}
-    \texttt{\todoresult{hash del commit}}
+    \texttt{05a59f7b7e7e05fdb5d6140417e338b23e6b1b3d}
 \end{center}
 
-y la configuración experimental:
+y la configuración experimental \texttt{benchmarking/configs/default.json}, cuyo resumen SHA-256 es:
 
 \begin{center}
-    \texttt{\todoresult{identificador de configuración}}
+    \texttt{004fdaa1bf1a817e8819e5cf9ffeb0b83bcd28baad0690f447ca1481eef45daf}
 \end{center}
+
+La corrida tiene el identificador \texttt{42c5501d-56c8-48d1-b630-695b6d4eb70f}, se ejecutó el 20 de octubre de 2026 entre las 13:50 y las 13:52 UTC sobre un árbol de trabajo sin cambios (\texttt{git\_dirty = false}), y sus resultados crudos y agregados se exportaron a \texttt{benchmark-results/42c5501d-56c8-48d1-b630-695b6d4eb70f/}. Los candidatos se ejecutaron en el orden aleatorio ECDSA, LWR, Binary-LWE, LWE, ML-ZKAuth y Ring-LWE, fijado por la semilla de la configuración.
 

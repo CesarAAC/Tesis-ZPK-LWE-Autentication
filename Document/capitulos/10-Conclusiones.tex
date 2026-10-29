@@ -4,15 +4,15 @@ A partir de los experimentos realizados se identificaron los siguientes hallazgo
 principales:
 
 \begin{enumerate}
-    \item \todoresult{hallazgo principal sobre rendimiento}.
+    \item \textbf{Rendimiento:} en el entorno evaluado, los candidatos de retículos autentican entre 80 y 215 veces más lento que ECDSA, entre 5.85~ms (Ring-LWE) y 15.68~ms (LWR), en parte porque se comparan prototipos en Python con una implementación compilada. ML-ZKAuth, con 9.72~ms, queda entre los candidatos sobre anillos y los de matriz.
 
-    \item \todoresult{hallazgo principal sobre memoria}.
+    \item \textbf{Memoria:} la estructura algebraica es el factor decisivo. Los candidatos de matriz asignan entre 16.4 y 18.7~MB por autenticación y requieren parámetros públicos de 6.6 a 7.6~MB, mientras que Ring-LWE y ML-ZKAuth asignan menos de 1~MB y sus claves ocupan pocos kilobytes.
 
-    \item \todoresult{hallazgo principal sobre comunicación}.
+    \item \textbf{Comunicación:} ML-ZKAuth transmite 4\,910 bytes por autenticación, entre 2.3 y 2.6 veces menos que los demás candidatos de retículos, aunque 18.4 veces más que ECDSA.
 
     \item \todoresult{hallazgo principal sobre seguridad}.
 
-    \item \todoresult{hallazgo principal sobre implementación y despliegue}.
+    \item \todoresult{hallazgo principal sobre despliegue}.
 
     \item \todoresult{hallazgo principal sobre el protocolo propuesto}.
 \end{enumerate}

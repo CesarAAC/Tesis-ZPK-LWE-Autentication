@@ -135,7 +135,7 @@ Para superar estas ineficiencias combinatorias, Cayrel et al. \cite{cayrel2012im
 \begin{equation}
 \epsilon = \frac{q+1}{2q} \approx \frac{1}{2}
 \end{equation}
-Esta reducción de $2/3$ a $1/2$ disminuyó drásticamente el número de repeticiones requeridas para alcanzar la solidez deseada, reduciendo la sobrecarga de almacenamiento y comunicación en retículos ideales (\textit{Ideal-SIS}) \cite{cayrel2012improved}.
+Esta reducción de $2/3$ a $1/2$ disminuyó drásticamente el número de repeticiones requeridas para alcanzar la solidez deseada, con lo que se redujo la sobrecarga de almacenamiento y comunicación en retículos ideales (\textit{Ideal-SIS}) \cite{cayrel2012improved}.
 
 \paragraph{Fiat--Shamir con Abortos}
 \label{sec:fiat-shamir-abortos}
@@ -204,12 +204,12 @@ En la criptografía clásica, las demostraciones formales de solidez (\textit{so
 Bajo este paradigma, la prueba de seguridad se construye mediante un \textbf{extractor de conocimiento} ($\mathsf{Ext}$) determinista o probabilístico en tiempo polinomial que interactúa con un probador deshonesto $\mathcal{P}^*$ como una ``caja negra'':
 \begin{enumerate}
     \item $\mathsf{Ext}$ ejecuta a $\mathcal{P}^*$ hasta que este emite un compromiso inicial $a$.
-    \item $\mathsf{Ext}$ envía un primer desafío aleatorio $c_1$ y registra la respuesta válida $z_1$, obteniendo la transcripción $(a, c_1, z_1)$.
+    \item $\mathsf{Ext}$ envía un primer desafío aleatorio $c_1$ y registra la respuesta válida $z_1$, con lo que obtiene la transcripción $(a, c_1, z_1)$.
     \item A continuación, $\mathsf{Ext}$ \textbf{rebobina} el estado de ejecución interno de $\mathcal{P}^*$ al punto exacto inmediatamente posterior al envío del compromiso $a$.
-    \item En este estado restaurado, $\mathsf{Ext}$ emite un segundo desafío diferente $c_2 \neq c_1$ y obtiene una segunda respuesta válida $z_2$, generando la transcripción $(a, c_2, z_2)$.
+    \item En este estado restaurado, $\mathsf{Ext}$ emite un segundo desafío diferente $c_2 \neq c_1$ y obtiene una segunda respuesta válida $z_2$, con lo que forma la transcripción $(a, c_2, z_2)$.
 \end{enumerate}
 
-Al disponer de dos transcripciones válidas $((a, c_1, z_1), (a, c_2, z_2))$ que comparten el mismo compromiso $a$, el extractor $\mathsf{Ext}$ aplica relaciones algebraicas directas para despejar un testigo en tiempo polinomial, reduciendo la solidez de la prueba a la dureza del problema matemático subyacente. En los protocolos sobre retículos, el testigo extraído suele ser corto pero no necesariamente el secreto original: es un testigo de una relación ``relajada''. En Fiat--Shamir con abortos, por ejemplo, de dos respuestas $\mathbf{z}$ y $\mathbf{z}'$ a desafíos $c$ y $c'$ se obtiene la diferencia $\mathbf{z} - \mathbf{z}'$, un vector corto que satisface la ecuación de la clave multiplicada por $c - c'$ y con cotas más amplias que las del secreto \cite{lyubashevsky2012lattice}. La prueba es entonces un argumento de conocimiento para esa relación relajada.
+Al disponer de dos transcripciones válidas $((a, c_1, z_1), (a, c_2, z_2))$ que comparten el mismo compromiso $a$, el extractor $\mathsf{Ext}$ aplica relaciones algebraicas directas para despejar un testigo en tiempo polinomial, de modo que la solidez de la prueba se reduce a la dureza del problema matemático subyacente. En los protocolos sobre retículos, el testigo extraído suele ser corto pero no necesariamente el secreto original: es un testigo de una relación ``relajada''. En Fiat--Shamir con abortos, por ejemplo, de dos respuestas $\mathbf{z}$ y $\mathbf{z}'$ a desafíos $c$ y $c'$ se obtiene la diferencia $\mathbf{z} - \mathbf{z}'$, un vector corto que satisface la ecuación de la clave multiplicada por $c - c'$ y con cotas más amplias que las del secreto \cite{lyubashevsky2012lattice}. La prueba es entonces un argumento de conocimiento para esa relación relajada.
 
 \paragraph{Falla del Rebobinado Directo en el Modelo Cuántico: Colapso de la Función de Onda y No-Clonación}
 Cuando el adversario es una entidad cuántica, el mecanismo clásico de rebobinado deja de ser aplicable de forma directa \cite{liu2019revisiting}.
@@ -227,7 +227,7 @@ Cuando el extractor cuántico $\mathsf{Ext}$ interactúa con $\mathcal{P}^*$ par
 En consecuencia, el extractor no puede, en general, ``rebobinar'' a $\mathcal{P}^*$ a su estado cuántico exacto $|\psi\rangle$ previo a la primera medición. Si $\mathsf{Ext}$ envía un segundo desafío $c_2$ sobre el estado alterado $|\psi_{c_1, z_1}\rangle$, la respuesta obtenida puede no guardar la coherencia necesaria con el compromiso $a$, lo que invalida el argumento clásico de extracción \cite{liu2019revisiting}.
 
 \paragraph{Insuficiencia de las Reducciones Clásicas para Seguridad Poscuántica}
-La existencia del obstáculo del rebobinado cuántico conduce a un resultado crítico en la criptografía post-cuántica: \textbf{la dureza post-cuántica del problema matemático subyacente (como LWE o SIS) no garantiza automáticamente la seguridad post-cuántica del protocolo ZKP si su demostración de solidez depende de reducciones por rebobinado} \cite{liu2019revisiting}. Lombardi et al. mostraron, de forma más general, que una demostración clásica de seguridad bajo LWE, incluso con reducciones de caja negra, no implica seguridad poscuántica: construyeron esquemas (deliberadamente artificiales) con esa demostración que un adversario cuántico rompe con unas pocas consultas \cite{lombardi2022postquantum}.
+La existencia del obstáculo del rebobinado cuántico conduce a un resultado crítico en la criptografía poscuántica: \textbf{la dureza poscuántica del problema matemático subyacente (como LWE o SIS) no garantiza automáticamente la seguridad poscuántica del protocolo ZKP si su demostración de solidez depende de reducciones por rebobinado} \cite{liu2019revisiting}. Lombardi et al. mostraron, de forma más general, que una demostración clásica de seguridad bajo LWE, incluso con reducciones de caja negra, no implica seguridad poscuántica: construyeron esquemas (deliberadamente artificiales) con esa demostración que un adversario cuántico rompe con unas pocas consultas \cite{lombardi2022postquantum}.
 
 Por este motivo, el diseño de argumentos no interactivos de conocimiento poscuánticos (NIZKAoK) exige modelos analíticos más rigurosos, tales como:
 \begin{enumerate}

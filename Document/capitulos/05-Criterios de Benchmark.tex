@@ -4,8 +4,7 @@ Este capítulo presenta la metodología experimental utilizada para evaluar y co
 las diferentes alternativas criptográficas consideradas en este trabajo. El objetivo
 no consiste únicamente en determinar cuál implementación presenta el menor tiempo de
 ejecución, sino en estudiar los compromisos existentes entre rendimiento, consumo de
-recursos, comunicación, seguridad, complejidad de implementación y requisitos
-operacionales.
+recursos, comunicación, seguridad y requisitos operacionales.
 
 % ============================================================
 \subsection{Objetivos de la evaluación}
@@ -21,7 +20,8 @@ La evaluación experimental persigue los siguientes objetivos:
     alternativa.
 
     \item Determinar el volumen de información que debe transmitirse durante una
-    autenticación y estudiar su comportamiento ante diferentes condiciones de red.
+    autenticación y proyectar su efecto sobre el tiempo de autenticación en distintas
+    condiciones de red.
 
     \item Analizar las condiciones de seguridad asociadas con los parámetros utilizados
     por cada protocolo.
@@ -29,8 +29,7 @@ La evaluación experimental persigue los siguientes objetivos:
     \item Examinar los principales ataques relevantes para cada familia criptográfica
     y las condiciones necesarias para mitigarlos.
 
-    \item Comparar la complejidad de implementación, configuración y despliegue de cada
-    alternativa.
+    \item Comparar los requisitos de configuración y despliegue de cada alternativa.
 
     \item Analizar las dependencias de confianza y los requisitos de infraestructura de
     cada protocolo.
@@ -162,7 +161,7 @@ Referencia de industria \\
 LWE estándar &
 Learning With Errors &
 Retículos &
-Candidato post-cuántico \\
+Candidato poscuántico \\
 
 Binary-LWE &
 Learning With Errors con secreto restringido &
@@ -179,9 +178,9 @@ Learning With Rounding &
 Retículos &
 Variante basada en redondeo \\
 
-LWE propuesto &
-\todoresult{describir fundamento exacto} &
-Retículos &
+ML-ZKAuth (propuesto) &
+Module-LWE y SelfTargetMSIS (prueba); ML-KEM-768 y AES-256-GCM (token) &
+Retículos estructurados (módulos) &
 Propuesta de este trabajo \\
 
 \bottomrule

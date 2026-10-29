@@ -1,60 +1,68 @@
 \subsection{Entorno experimental}
 \label{sec:experimental-environment}
 
-Todos los experimentos fueron ejecutados bajo el mismo en   torno de hardware y software.
+Todos los experimentos fueron ejecutados bajo el mismo entorno de hardware y software.
 La Tabla~\ref{tab:environment} documenta la configuración utilizada con el objetivo de
 facilitar la reproducibilidad de los resultados.
+
+Los experimentos se ejecutan dentro de un contenedor Docker, sobre un computador de escritorio con Windows. En Windows, Docker Desktop ejecuta los contenedores en una máquina virtual ligera de WSL2 (\textit{Windows Subsystem for Linux}), que corre sobre el hipervisor del sistema. No hay emulación: el código se ejecuta directamente sobre el procesador del anfitrión, y el contenedor ve el mismo modelo de procesador y sus 16 núcleos lógicos, sin límite de CPU. Hay tres diferencias con el anfitrión, por las que la tabla informa ambos niveles:
+\begin{itemize}
+    \item \textbf{Memoria:} la máquina virtual de WSL2 recibe por omisión la mitad de la memoria del anfitrión, de modo que el contenedor ve unos 30~GiB de los 61.6~GiB que ve Windows, sin un límite adicional del contenedor.
+    \item \textbf{Sistema operativo y kernel:} el contenedor usa el espacio de usuario de Ubuntu de la imagen de SageMath sobre el kernel Linux de WSL2, no el de Windows.
+    \item \textbf{Planificación:} los núcleos virtuales los planifica Windows, de modo que otros procesos del anfitrión y los cambios de frecuencia del procesador pueden introducir variación en los tiempos. Se mitiga con las ejecuciones de calentamiento, el orden aleatorio de los candidatos y la repetición de cada medición (Sección~\ref{sec:experimental-design}). Opcionalmente, el contenedor puede fijarse a núcleos concretos con la variable \texttt{BENCHMARK\_CPUSET} del script del benchmark, que también queda registrada en los metadatos.
+\end{itemize}
+Todas las mediciones de tiempo y memoria se toman dentro del contenedor. Además, el benchmark registra estos datos de forma automática en los metadatos de cada corrida, junto con el \textit{commit} evaluado y el identificador de la imagen.
 
 \begin{table}[H]
 \centering
 \caption{Entorno utilizado para ejecutar los experimentos.}
 \label{tab:environment}
-\begin{tabularx}{0.9\textwidth}{lY}
+\begin{tabularx}{0.95\textwidth}{lY}
 \toprule
 \textbf{Elemento} & \textbf{Configuración} \\
 \midrule
 
 Procesador &
-\todoresult{modelo exacto de CPU} \\
+AMD Ryzen 7 9700X, frecuencia base de 3.8~GHz \\
 
 Arquitectura &
-\todoresult{x86\_64, ARM64, etc.} \\
+x86\_64 (AMD64) \\
 
 Núcleos físicos &
-\todoresult{valor} \\
+8 \\
 
 Núcleos lógicos &
-\todoresult{valor} \\
+16 (SMT); el contenedor ve los 16, sin límite de CPU \\
 
 Memoria RAM &
-\todoresult{capacidad total} \\
+Anfitrión: 61.6~GiB visibles para Windows. Contenedor: 30.2~GiB, asignados a la máquina virtual de WSL2 (valor por omisión), sin límite adicional \\
 
 Sistema operativo &
-\todoresult{distribución y versión} \\
+Anfitrión: Windows 11 Pro 10.0.26200, con WSL 2.6.1. Contenedor: Ubuntu 24.04.5 LTS \\
 
 Kernel &
-\todoresult{versión} \\
+Linux 6.6.87.2-microsoft-standard-WSL2 (kernel de WSL2 que ejecuta los contenedores) \\
 
 Docker &
-\todoresult{versión} \\
+Docker Desktop con Docker Engine 28.4.0 y Docker Compose 2.39.2; cgroups v2 \\
 
 Imagen base &
-\todoresult{imagen y versión} \\
+\texttt{sagemath/sagemath:latest}; imagen del experimento construida el 30 de septiembre de 2026 (\texttt{sha256:e59db430fb1a}) \\
 
 SageMath &
-\todoresult{versión} \\
+10.10 \\
 
 Python &
-\todoresult{versión} \\
+CPython 3.12.3 (entorno de SageMath) \\
 
 Biblioteca criptográfica &
-\todoresult{nombre y versión} \\
+\texttt{cryptography} 50.0.2, con OpenSSL 4.0.3, para ECDSA P-256, ML-KEM-768 y AES-256-GCM; NumPy 2.4.4 para la aritmética de retículos \\
 
 Código del experimento &
-\todoresult{commit Git evaluado} \\
+\textit{Commit} \texttt{05a59f7} (Sección~\ref{sec:reproducibility}) \\
 
 Fecha de ejecución &
-\todoresult{fecha} \\
+20 de octubre de 2026, de 13:50 a 13:52 UTC \\
 
 \bottomrule
 \end{tabularx}
@@ -78,7 +86,8 @@ Tabla~\ref{tab:crypto-parameters}.
 \caption{Parámetros criptográficos utilizados en cada implementación.}
 \label{tab:crypto-parameters}
 \small
-\begin{tabularx}{\textwidth}{lYYYY}
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.8cm}>{\raggedright\arraybackslash}p{2.4cm}>{\raggedright\arraybackslash}p{2.3cm}>{\raggedright\arraybackslash}p{2.5cm}Y}
 \toprule
 \textbf{Protocolo} &
 \textbf{Dimensión} &
@@ -107,7 +116,7 @@ Igual que LWE estándar ($\kappa = 31$, $\gamma = 2^{17}$). \\
 
 Ring-LWE &
 $n = 1024$ &
-$q = 8\,380\,417$; anillo $\mathbb{Z}_q[x]/\langle x^{1024} + 1 \rangle$ &
+$q = 8\,380\,417$; polinomio $x^{1024} + 1$ &
 Secreto y error $\mathrm{CBD}(6)$ &
 Desafío polinomial con $\kappa = 16$ coeficientes $\pm 1$, $\gamma = 2^{17}$; producto negacíclico directo. \\
 
@@ -117,7 +126,7 @@ $q = 2^{23}$, $p = 2^{21}$ &
 Secreto $\mathrm{CBD}(2)$; sin error aleatorio &
 Redondeo al entero más cercano; $\kappa = 31$, $\gamma = 2^{17}$. \\
 
-LWE propuesto (ML-ZKAuth) &
+LWE propuesto\newline (ML-ZKAuth) &
 Prueba: $k' = 4$, $d = 256$ (1024); transporte: $k = 3$ (768) &
 $q' = 8\,380\,417$ (prueba); $q = 3329$ (transporte) &
 $\mathrm{CBD}(6)$ en la clave de identidad, $\mathrm{CBD}(2)$ en el transporte; máscara uniforme &
@@ -141,16 +150,17 @@ codificación del prototipo (Sección~\ref{sec:pqlite-implementacion}):
 \begin{enumerate}
     \item \textbf{Memoria del cliente:}
     \begin{itemize}
-        \item Clave privada $(\mathbf{s}, \mathbf{e}, \mathsf{id}_{\mathcal{C}})$: $2 \times 4 \times 256 \times 4 / 8 + 32 = 1\,056$ bytes, porque los coeficientes de $\mathbf{s}$ y $\mathbf{e}$ están en $\{-6, \dots, 6\}$ y se guardan con 4 bits.
-        \item Clave pública $\mathbf{t}$: $4 \times 256 \times 23 / 8 = 2\,944$ bytes. El cliente no necesita guardarla, porque usa su resumen $\mathsf{id}_{\mathcal{C}}$.
-        \item Matrices públicas $\mathbf{A}'$ y $\mathbf{A}$: se regeneran desde la semilla $\rho$ de 32 bytes y no ocupan almacenamiento permanente.
+        \item Clave privada $(\mathbf{s}, \mathbf{e}, \mathsf{id}_{\mathcal{C}})$: 1\,056 bytes. Cada uno de $\mathbf{s}$ y $\mathbf{e}$ tiene $k' \times d = 4 \times 256 = 1\,024$ coeficientes muestreados de $\mathrm{CBD}(6)$, que toman 13 valores, de $-6$ a $6$, y caben en 4 bits ($2^4 = 16$): $1\,024 \times 4 / 8 = 512$ bytes por vector. El identificador $\mathsf{id}_{\mathcal{C}} = \mathsf{H}(\mathbf{t})$ es un resumen SHA3-256 de 32 bytes. En total, $2 \times 512 + 32 = 1\,056$ bytes.
+        \item Clave pública $\mathbf{t}$: 2\,944 bytes, porque sus 1\,024 coeficientes son enteros módulo $q' = 8\,380\,417 < 2^{23}$ y ocupan 23 bits cada uno: $1\,024 \times 23 / 8 = 2\,944$. El cliente no necesita guardarla, porque usa su resumen $\mathsf{id}_{\mathcal{C}}$.
+        \item Matrices públicas: $\mathbf{A}'$ tiene $k'^2 d = 4\,096$ coeficientes de 23 bits (11\,776 bytes) y $\mathbf{A}$, $k^2 d = 2\,304$ coeficientes de 12 bits (3\,456 bytes). Se regeneran desde la semilla $\rho$ de 32 bytes y no ocupan almacenamiento permanente.
     \end{itemize}
 
     \item \textbf{Comunicación por autenticación:}
     \begin{itemize}
-        \item Reto $(\mathsf{tk}, \nu)$: 40 bytes.
-        \item Token: 3\,524 bytes (1\,088 de $\text{tok}_1$ y 2\,436 de $\text{tok}_2$), o 4\,676 bytes si incluye la cuota $\mathbf{b}_{\mathcal{C}}$ del acuerdo de clave.
-        \item Respuesta del servidor con $(\mathbf{b}_{\mathcal{S}}, \mathbf{v})$, solo si se acuerda clave de sesión: 1\,212 bytes.
+        \item Reto $(\mathsf{tk}, \nu)$: 40 bytes, el ticket aleatorio de 32 bytes (256 bits) y la marca de tiempo $\nu$, en milisegundos, como entero de 64 bits (8 bytes).
+        \item Token: 3\,524 bytes. $\text{tok}_1$ es el texto cifrado de ML-KEM-768, de 1\,088 bytes \cite{nist2024fips203}. $\text{tok}_2$ tiene 2\,436 bytes: el \textit{nonce} de AES-GCM (12), el contenido cifrado, que ocupa lo mismo que el contenido en claro (2\,408), y la etiqueta de autenticación (16). Ese contenido es la respuesta $\mathbf{z}$, cuyos 1\,024 coeficientes cumplen $|z_i| < \gamma_1 = 2^{17}$ y se codifican con 18 bits ($1\,024 \times 18 / 8 = 2\,304$ bytes), más la semilla del desafío $\tilde{c}$ (32), el ticket (32), la marca de tiempo (8) y el identificador $\mathsf{id}_{\mathcal{C}}$ (32): $2\,304 + 32 + 32 + 8 + 32 = 2\,408$ bytes.
+        \item Token con acuerdo de clave: 4\,676 bytes, porque $\text{tok}_2$ lleva además la cuota $\mathbf{b}_{\mathcal{C}} \in \mathcal{R}_q^3$, con $3 \times 256 = 768$ coeficientes módulo $q = 3329 < 2^{12}$ de 12 bits cada uno: $768 \times 12 / 8 = 1\,152$ bytes.
+        \item Respuesta del servidor con $(\mathbf{b}_{\mathcal{S}}, \mathbf{v})$, solo si se acuerda clave de sesión: 1\,212 bytes. La cuota $\mathbf{b}_{\mathcal{S}}$ ocupa 1\,152 bytes, como $\mathbf{b}_{\mathcal{C}}$, y la pista $\mathbf{v}$, un bit por cada uno de los 256 bits de la clave de sesión, 32 bytes; cifrados con AES-GCM, se suman el \textit{nonce} y la etiqueta: $12 + 1\,152 + 32 + 16 = 1\,212$ bytes.
     \end{itemize}
 
     \item \textbf{Cómputo:}
@@ -162,7 +172,9 @@ codificación del prototipo (Sección~\ref{sec:pqlite-implementacion}):
 \end{enumerate}
 
 Estos valores son analíticos; las mediciones del prototipo se reportan en la
-Sección~\ref{sec:key-size-results}.
+Sección~\ref{sec:key-size-results}. Los tamaños medidos son mayores, 1\,450 bytes la clave
+privada y 3\,936 la pública, porque la serialización JSON codifica los bytes en Base64, que
+añade un tercio, y agrega los nombres de los campos.
 
 
 % ============================================================
@@ -174,34 +186,24 @@ Sección~\ref{sec:key-size-results}.
 Cada operación fue ejecutada:
 
 \begin{equation}
-    N = \todoresult{número de iteraciones}
+    N = 200
 \end{equation}
 
-veces por configuración.
+veces por configuración: 200 configuraciones del sistema, 200 generaciones de claves y 200 autenticaciones completas, cada una medida por etapas (reto, respuesta y verificación). Las autenticaciones alternan entre 5 pares de claves generados de antemano, para que el resultado no dependa de una sola clave. La memoria se mide en una fase aparte, con 20 repeticiones por operación.
 
 Antes de iniciar la toma de datos se realizaron:
 
 \begin{equation}
-    N_{\text{warm-up}} =
-    \todoresult{número de iteraciones de calentamiento}
+    N_{\text{warm-up}} = 20
 \end{equation}
 
-ejecuciones de calentamiento que no fueron incluidas en los resultados finales.
+ejecuciones de calentamiento por candidato, cada una con generación de claves, reto, respuesta y verificación, que no fueron incluidas en los resultados finales. Los candidatos se ejecutan en un orden aleatorio fijado por una semilla registrada en la configuración, con una pausa de 1~s entre candidatos.
 
 \subsubsection{Estadísticos reportados}
 
 Para evitar representar el rendimiento mediante una única medición, para cada operación
-se calcularon los siguientes estadísticos:
-
-\begin{itemize}
-    \item media aritmética;
-    \item mediana;
-    \item desviación estándar;
-    \item mínimo;
-    \item máximo;
-    \item percentil 95;
-    \item percentil 99.
-\end{itemize}
+se calcularon la media aritmética, la mediana, la desviación estándar, el mínimo, el
+máximo y los percentiles 95 y 99.
 
 
 
@@ -209,35 +211,19 @@ se calcularon los siguientes estadísticos:
 \subsection{Métricas evaluadas}
 \label{sec:metrics}
 
-Las métricas utilizadas se agrupan en siete dimensiones principales:
-
-\begin{enumerate}
-    \item rendimiento computacional;
-    \item consumo de recursos;
-    \item comunicación;
-    \item seguridad;
-    \item complejidad de implementación;
-    \item características operacionales y experiencia de usuario;
-    \item madurez y facilidad de despliegue.
-\end{enumerate}
+Las métricas utilizadas se agrupan en seis dimensiones: rendimiento computacional,
+consumo de recursos, comunicación, seguridad, características operacionales y
+experiencia de usuario, y madurez y facilidad de despliegue. Las subsecciones
+siguientes detallan qué se mide en cada una.
 
 
 % ============================================================
 \subsubsection{Rendimiento computacional}
 
-Para cada protocolo se mide el tiempo requerido por:
-
-\begin{itemize}
-    \item generación de claves;
-    \item generación del reto;
-    \item generación de la respuesta;
-    \item verificación;
-    \item autenticación completa.
-\end{itemize}
-
-Las mediciones se reportan en milisegundos.
-
-Adicionalmente se calcula el throughput:
+Para cada protocolo se mide, en milisegundos, el tiempo de la configuración del sistema,
+de la generación de claves, de la generación del reto, de la generación de la respuesta,
+de la verificación y de la autenticación completa. Adicionalmente se calcula el
+\textit{throughput}:
 
 \begin{equation}
     R =
@@ -251,20 +237,12 @@ expresado en autenticaciones por segundo.
 % ============================================================
 \subsubsection{Consumo de memoria y almacenamiento}
 
-Para cada implementación se estudian:
-
-\begin{itemize}
-    \item memoria RAM promedio;
-    \item memoria RAM máxima;
-    \item tamaño de la clave pública;
-    \item tamaño de la clave privada;
-    \item tamaño de parámetros públicos adicionales;
-    \item estado temporal requerido durante una autenticación;
-    \item almacenamiento persistente requerido por usuario.
-\end{itemize}
-
-Los tamaños de estructuras criptográficas se calculan utilizando su representación
-serializada real y no únicamente su representación matemática abstracta.
+Para cada implementación se estudian el pico de memoria asignada durante cada operación
+y el incremento de la memoria residente (RSS) del proceso; el tamaño de la clave pública,
+de la clave privada y de los parámetros públicos adicionales; y el almacenamiento
+persistente requerido por usuario. Los tamaños de estructuras criptográficas se calculan
+utilizando su representación serializada real y no únicamente su representación
+matemática abstracta.
 
 
 % ============================================================
@@ -278,75 +256,51 @@ Para una autenticación:
 \begin{equation}
     B_{\text{auth}}
     =
-    B_{\text{request}}
-    +
     B_{\text{challenge}}
     +
-    B_{\text{response}}
-    +
-    B_{\text{metadata}}.
+    B_{\text{response}},
 \end{equation}
 
-Además se registra:
+donde cada término incluye la carga criptográfica del mensaje y el sobre que la contiene,
+cuyo tamaño conjunto se informa aparte como $B_{\text{metadata}}$. Además se registran el
+número de mensajes y de viajes de ida y vuelta (\textit{round trips}) de la autenticación
+medida.
 
-\begin{itemize}
-    \item número de mensajes intercambiados;
-    \item número de viajes de ida y vuelta (\textit{round trips});
-    \item tamaño máximo de un mensaje;
-    \item cantidad total de bytes transmitidos.
-\end{itemize}
+Para estudiar el efecto de la red, el tiempo de una autenticación se proyecta en cinco
+escenarios sintéticos: local (0.2~ms de ida y vuelta y 1\,000~Mbit/s), baja latencia
+(10~ms y 100~Mbit/s), latencia media (50~ms y 25~Mbit/s), alta latencia (100~ms y
+10~Mbit/s) y red restringida (250~ms y 1~Mbit/s). La proyección suma al tiempo medio de
+autenticación y de serialización un viaje de ida y vuelta y el tiempo de transmisión de
+$B_{\text{auth}}$:
+
+\begin{equation}
+    T_{\text{red}}
+    =
+    T_{\text{auth}} + T_{\text{ser}} + \text{RTT} + \frac{8\,B_{\text{auth}}}{W},
+\end{equation}
+
+donde $W$ es el ancho de banda en bits por segundo. Es un modelo determinista para
+comparar candidatos, no una emulación de red: no incluye el establecimiento de la
+conexión, las cabeceras de TCP, TLS o HTTP, la congestión ni las retransmisiones.
 
 
 % ============================================================
 \subsubsection{Seguridad}
 
-La evaluación de seguridad considera:
-
-\begin{itemize}
-    \item problema matemático subyacente;
-    \item parámetros utilizados;
-    \item estimación de seguridad clásica;
-    \item estimación de seguridad frente a adversarios cuánticos;
-    \item ataques conocidos relevantes;
-    \item sensibilidad a una selección incorrecta de parámetros;
-    \item requisitos de aleatoriedad;
-    \item probabilidad de fallo cuando sea aplicable;
-    \item vulnerabilidades derivadas de la implementación.
-\end{itemize}
-
-
-% ============================================================
-\subsubsection{Complejidad de implementación}
-
-La dificultad de implementación no se asigna únicamente mediante una valoración
-subjetiva. Se consideran los siguientes factores:
-
-\begin{itemize}
-    \item cantidad de primitivas criptográficas necesarias;
-    \item cantidad de parámetros configurables;
-    \item líneas de código asociadas con la implementación criptográfica;
-    \item número y naturaleza de dependencias externas;
-    \item necesidad de aritmética especializada;
-    \item complejidad del muestreo aleatorio;
-    \item complejidad de serialización;
-    \item manejo de estado;
-    \item disponibilidad de bibliotecas consolidadas.
-\end{itemize}
+La evaluación de seguridad considera el problema matemático subyacente y los parámetros
+utilizados, las estimaciones de seguridad clásica y frente a adversarios cuánticos, los
+ataques conocidos relevantes, la sensibilidad a una selección incorrecta de parámetros,
+los requisitos de aleatoriedad, la probabilidad de fallo cuando sea aplicable y las
+vulnerabilidades derivadas de la implementación.
 
 
 % ============================================================
 \subsubsection{Características operacionales}
 
-Para estudiar las implicaciones en un sistema real se consideran:
-
-\begin{itemize}
-    \item número de pasos requeridos durante el registro;
-    \item número de pasos requeridos durante una autenticación;
-    \item necesidad de almacenar secretos en el dispositivo del usuario;
-    \item necesidad de servidor en línea;
-    \item posibilidad de verificación fuera de línea;
-    \item necesidad de mantener estado por usuario;
-    \item procedimiento de renovación de claves;
-    \item procedimiento ante compromiso de credenciales;
-    \item requerimientos de infraestructura adicionales.
-\end{itemize}
+Para estudiar las implicaciones en un sistema real se consideran el número de pasos del
+registro y de una autenticación; la necesidad de almacenar secretos en el dispositivo
+del usuario, de contar con un servidor en línea y de mantener estado por usuario; la
+posibilidad de que un tercero verifique una autenticación; los procedimientos de
+renovación de claves y ante el compromiso de credenciales; y los requerimientos de
+infraestructura adicionales. A ello se suma la madurez de cada alternativa, es decir,
+si está estandarizada y si existen implementaciones consolidadas.
