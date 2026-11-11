@@ -10,18 +10,80 @@ principales:
 
     \item \textbf{Comunicación:} ML-ZKAuth transmite 4\,910 bytes por autenticación, entre 2.3 y 2.6 veces menos que los demás candidatos de retículos, aunque 18.4 veces más que ECDSA.
 
-    \item \todoresult{hallazgo principal sobre seguridad}.
+    \item \textbf{Seguridad:} los cinco candidatos de retículos se ajustaron a la misma dureza estimada, entre $2^{128.0}$ y $2^{128.6}$ en el modelo Core-SVP clásico y entre $2^{116.3}$ y $2^{117.9}$ en el cuántico, y la solidez de sus pruebas, entre $2^{150.7}$ y $2^{184.3}$, queda por encima en todos los casos. Sus diferencias de costo se deben, por tanto, a su estructura y no a niveles de seguridad distintos. ECDSA ofrece 128 bits clásicos, pero el algoritmo de Shor lo rompe. Las cifras de los candidatos de retículos son estimaciones conservadoras para comparar, que no certifican una categoría de NIST, y descansan en supuestos propios de algunos candidatos: que la estructura algebraica no pueda explotarse, en Ring-LWE y ML-ZKAuth, y que el redondeo se comporte como un error uniforme, en LWR.
 
-    \item \todoresult{hallazgo principal sobre despliegue}.
+    \item \textbf{Despliegue:} la estructura algebraica decide también la viabilidad práctica. Los candidatos de matriz exigen distribuir parámetros públicos de 6.6 a 7.6~MB y guardar cerca de 0.8~MB por usuario en el servidor: en una red restringida (250~ms y 1~Mbit/s), solo obtener esos parámetros tomaría entre 52.8 y 61.0~s, frente a menos de 0.1~s para todo el registro con Ring-LWE o ML-ZKAuth. En el inicio de sesión, en cambio, la latencia de la red pesa más que el cómputo: con 50~ms y 25~Mbit/s, la espera va de 100.2~ms (ECDSA) a 119.8~ms (Binary-LWE), con ML-ZKAuth en 111.3~ms. En madurez, ECDSA está estandarizado en FIPS~186-5 y tiene implementaciones consolidadas; ML-ZKAuth se apoya en primitivas estandarizadas, ML-KEM y la plantilla de ML-DSA, pero el protocolo, como los demás candidatos de retículos, es un prototipo.
 
-    \item \todoresult{hallazgo principal sobre el protocolo propuesto}.
+    \item \textbf{Protocolo propuesto:} ML-ZKAuth es una alternativa poscuántica competitiva en tamaño. Con la misma dureza estimada que los demás candidatos de retículos, autentica en 9.72~ms de media (7.53~ms de mediana), entre 1.38 y 1.61 veces más rápido que los candidatos de matriz y 1.66 veces más lento que Ring-LWE; transmite la menor cantidad de datos de ese grupo y usa claves de 3.9~KB (pública) y 1.4~KB (privada) y parámetros públicos de 2.3~KB. Además, oculta el token frente a la terminal y permite acordar una clave de sesión, algo que ningún otro candidato ofrece, aunque el benchmark no midió el costo de ese acuerdo. Sus costos son la variabilidad del probador, que necesita en promedio unos 13 intentos por prueba (percentil 95 de 24.1~ms), el estado que debe guardar el servidor (la clave privada del KEM y el registro de tickets consumidos) y la necesidad de que el cliente tenga la clave pública auténtica del servidor, $vpk$, cuya distribución el protocolo no define. Frente a las amenazas prácticas, cubre la repetición y la captura en terminales comprometidas y, según las estimaciones, resiste a un adversario cuántico; cubre solo en parte los relés en tiempo real y el \textit{phishing}, y deja fuera el \textit{malware} en el dispositivo, los canales laterales y la denegación de servicio (Sección~\ref{sec:pqlite-improbables}).
 \end{enumerate}
 
 En conjunto, los resultados permiten caracterizar las diferentes alternativas no
 mediante una clasificación única, sino a partir de los compromisos que cada una
 establece entre seguridad, costo computacional, memoria, comunicación y complejidad
-operacional.
+operacional. ECDSA sigue siendo la opción más eficiente mientras no exista un adversario
+cuántico. Entre las alternativas poscuánticas, las construcciones sobre anillos o módulos
+son preferibles cuando el ancho de banda o el almacenamiento son escasos, y ML-ZKAuth
+conviene cuando, además, la autenticación atraviesa intermediarios que no deben conocer la
+identidad del cliente o se necesita acordar una clave de sesión.
 
-Esta caracterización proporciona la base experimental para determinar en qué contextos
-resulta apropiado utilizar cada familia de protocolos y permite evaluar de forma
-homogénea la propuesta desarrollada en este trabajo.
+
+% ============================================================
+\subsection{Cumplimiento de los objetivos}
+
+El objetivo general era definir el funcionamiento, la robustez, el alcance y los riesgos de
+un protocolo de autenticación de conocimiento cero resistente a ataques cuánticos, en
+contraste con protocolos tradicionales. El trabajo lo cumple con ML-ZKAuth: su
+funcionamiento está especificado e implementado, su robustez se enuncia con supuestos
+precisos y se estima en 128 bits Core-SVP, su alcance y sus riesgos se documentan en sus
+limitaciones y en el análisis de amenazas (Secciones~\ref{sec:pqlite-limitaciones} y
+\ref{sec:pqlite-improbables}), y el contraste con ECDSA y con otras cuatro construcciones de
+retículos se hizo bajo una misma metodología.
+
+Los dos primeros objetivos específicos, analizar los fundamentos y las limitaciones de las
+pruebas de conocimiento cero y del problema LWE, se cumplieron en el marco teórico, que
+justifica la elección de Fiat--Shamir con abortos sobre retículos y la forma de estimar la
+seguridad de los parámetros (Secciones~\ref{sec:zkp} y \ref{sec:estimacion}). El tercero,
+diseñar e implementar un prototipo que integre ambos conceptos, se cumplió con ML-ZKAuth y
+su implementación de referencia, que supera la misma verificación de conformidad que los
+demás candidatos y cuenta con pruebas automáticas de su completitud, de la evidencia de
+conocimiento cero y de las decisiones que se apartaron del manuscrito inicial. El cuarto,
+explorar las particularidades necesarias para su correcto funcionamiento, llevó a
+decisiones que ese manuscrito no preveía: un segundo módulo para la prueba, las dos
+condiciones de rechazo del probador, la búsqueda del rango y del ruido de la capa de prueba
+y el vínculo del acuerdo de clave con la autenticación. El quinto, comparar el protocolo con
+los protocolos de autenticación convencionales, se cumplió con la evaluación experimental
+(Sección~\ref{chap:benchmark}), que midió a los seis candidatos con el mismo procedimiento y
+con la misma dureza estimada para los cinco de retículos.
+
+
+% ============================================================
+\subsection{Aportes}
+
+Los aportes del trabajo son tres. El primero es el diseño de ML-ZKAuth, con sus decisiones
+justificadas y sus afirmaciones de seguridad enunciadas con precisión: una prueba no
+interactiva de conocimiento cero en el modelo de oráculo aleatorio programable, que es un
+argumento de conocimiento para una relación relajada y cuya seguridad descansa en Module-LWE
+y SelfTargetMSIS. El segundo es un marco de evaluación reproducible: un contrato común para
+los seis candidatos, una verificación de conformidad previa a la medición y el registro de
+la configuración, el entorno y el \textit{commit} de cada corrida. El tercero es la
+equiparación de los cinco candidatos de retículos a la misma dureza estimada, que permite
+atribuir sus diferencias de costo a su estructura y no a niveles de seguridad distintos.
+
+
+% ============================================================
+\subsection{Limitaciones y trabajo futuro}
+
+Los resultados tienen límites que señalan el trabajo pendiente. Los candidatos de retículos
+son prototipos en Python con NumPy, sin NTT ni tiempo constante: una implementación
+compilada, de tiempo constante y con NTT, medida en dispositivos con recursos limitados,
+permitiría comparar los tiempos con ECDSA sin mezclar algoritmo e implementación y evaluar
+la resistencia a canales laterales. La seguridad se estimó en el modelo Core-SVP; faltan
+estimaciones refinadas en compuertas y memoria y una demostración de la seguridad de
+ML-ZKAuth en el modelo de oráculo aleatorio cuántico. El benchmark midió el par
+reto--respuesta y proyectó los tiempos de red; quedan por medir el inicio de sesión
+completo, el acuerdo de clave de sesión y el comportamiento sobre redes reales.
+
+Un despliegue de ML-ZKAuth necesitaría, además, un almacén compartido para el estado del
+verificador, un mecanismo para distribuir $vpk$ de forma auténtica, la confirmación de la
+clave de sesión y su derivación con una función hash, y un segundo factor local, como un
+PIN o la biometría, que proteja la clave del cliente en su dispositivo.
