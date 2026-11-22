@@ -282,4 +282,19 @@ M.~R. Albrecht \emph{et~al.}, ``lattice-estimator: An estimator for the
   \url{https://csrc.nist.gov/CSRC/media/Projects/Post-Quantum-Cryptography/documents/call-for-proposals-final-dec-2016.pdf}
 \BIBentrySTDinterwordspacing
 
+\bibitem{emvco2011book2}
+{EMVCo}, ``{EMV} integrated circuit card specifications for payment systems,
+  book 2: Security and key management, version 4.3,'' Especificación técnica,
+  Nov. 2011.
+
+\bibitem{barker2020sp80057}
+E.~Barker, ``Recommendation for key management: Part 1 -- general,'' National
+  Institute of Standards and Technology, NIST Special Publication 800-57 Part 1
+  Rev. 5, May 2020.
+
+\bibitem{nist2023fips186}
+{National Institute of Standards and Technology}, ``Digital signature standard
+  ({DSS}),'' U.S. Department of Commerce, Federal Information Processing
+  Standards Publication FIPS 186-5, Feb. 2023.
+
 \end{thebibliography}

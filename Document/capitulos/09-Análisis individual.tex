@@ -70,8 +70,7 @@ Comparte esas dependencias, pero la de los parámetros se reduce a una semilla: 
 \label{sec:global-comparison}
 
 La Tabla~\ref{tab:global-summary} resume las principales métricas cuantitativas.
-Esta tabla no pretende producir un ranking absoluto entre protocolos, sino permitir
-identificar visualmente los compromisos existentes entre las diferentes alternativas.
+No busca ordenar los protocolos de mejor a peor; sirve para ver de un vistazo qué cede cada alternativa y a cambio de qué.
 
 \begin{table}[H]
 \centering
@@ -118,12 +117,9 @@ El tiempo es la media de la autenticación completa (Tabla~\ref{tab:authenticati
 \subsection{Análisis multidimensional}
 \label{sec:multidimensional-analysis}
 
-Una única métrica no permite determinar la conveniencia de una construcción
-criptográfica. Un protocolo puede reducir el tiempo de ejecución a costa de incrementar
-el tamaño de las claves, mientras que otro puede reducir la comunicación a costa de
-más tiempo de cómputo.
+Ninguna métrica sola dice si una construcción conviene. Un protocolo puede ser más rápido a cambio de claves más grandes, 
+y otro puede transmitir menos a cambio de más cómputo. Por eso los resultados se leen como compromisos entre
 
-Por esta razón, los resultados se analizan como un conjunto de compromisos entre:
 
 \begin{equation}
     (\text{seguridad},

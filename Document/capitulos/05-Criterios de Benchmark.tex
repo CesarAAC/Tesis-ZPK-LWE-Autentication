@@ -1,16 +1,14 @@
 \label{chap:benchmark}
 
-Este capítulo presenta la metodología experimental utilizada para evaluar y comparar
-las diferentes alternativas criptográficas consideradas en este trabajo. El objetivo
-no consiste únicamente en determinar cuál implementación presenta el menor tiempo de
-ejecución, sino en estudiar los compromisos existentes entre rendimiento, consumo de
-recursos, comunicación, seguridad y requisitos operacionales.
+Este capítulo describe cómo se evaluaron y compararon las alternativas criptográficas del trabajo. 
+Saber cuál implementación es más rápida es solo una parte de la pregunta; interesa más ver qué se 
+gana y qué se pierde en rendimiento, consumo de recursos, comunicación, seguridad y requisitos operacionales al elegir una u otra.
 
 % ============================================================
 \subsection{Objetivos de la evaluación}
 \label{sec:benchmark-objectives}
 
-La evaluación experimental persigue los siguientes objetivos:
+La evaluación experimental busca:
 
 \begin{enumerate}
     \item Comparar el costo computacional de los diferentes protocolos durante las
@@ -49,18 +47,15 @@ La evaluación experimental persigue los siguientes objetivos:
 \subsection{Principio de comparabilidad}
 \label{sec:benchmark-comparability}
 
-Para garantizar una comparación significativa, todos los candidatos implementan una
-misma funcionalidad abstracta de autenticación.
+Para que la comparación tenga sentido, todos los candidatos implementan la misma funcionalidad abstracta de autenticación.
 
-El flujo experimental se divide conceptualmente en dos momentos: registro
+El flujo experimental tiene dos momentos: registro
 (\textit{enrollment}) y autenticación.
 
 \subsubsection{Registro}
 
-Durante el registro se ejecutan las operaciones necesarias para preparar al usuario y
-al verificador antes de realizar una autenticación.
+En el registro se prepara al usuario y al verificador para las autenticaciones posteriores. En forma abstracta:
 
-De manera abstracta, esta etapa se representa como:
 
 \begin{equation}
     (pk, sk, \theta) \leftarrow \operatorname{Setup}()
@@ -68,10 +63,10 @@ De manera abstracta, esta etapa se representa como:
 
 donde:
 
-\begin{itemize}
-    \item $pk$ representa la información pública necesaria para verificar al usuario;
-    \item $sk$ representa el material secreto conservado por el usuario o demostrador;
-    \item $\theta$ representa parámetros adicionales requeridos por el protocolo.
+\begin{itemize} 
+    \item $pk$ es la información pública con la que se verifica al usuario; 
+    \item $sk$ es el material secreto que guarda el usuario (el probador); 
+    \item $\theta$ son los parámetros adicionales que pida el protocolo. 
 \end{itemize}
 
 Dependiendo de la construcción, esta operación puede incluir generación de claves,
@@ -93,7 +88,7 @@ donde:
 \begin{itemize}
     \item $c$ es el reto generado por el verificador;
     \item $r$ es la respuesta generada por el usuario;
-    \item $b \in \{0,1\}$ representa el resultado de la verificación.
+    \item $b \in \{0,1\}$ es el resultado de la verificación.
 \end{itemize}
 
 Para una ejecución válida se espera que:
@@ -110,9 +105,8 @@ etapas funcionales aun cuando las operaciones matemáticas internas sean diferen
 
 El tiempo de generación de claves no se incorpora automáticamente al tiempo de cada
 autenticación, puesto que normalmente corresponde a una operación realizada durante
-el registro inicial.
+el registro inicial. Se reportan por separado
 
-Por lo tanto, se reportan por separado:
 
 \begin{equation}
     T_{\text{enrollment}}
@@ -187,12 +181,9 @@ Propuesta de este trabajo \\
 \end{tabularx}
 \end{table}
 
-ECDSA se utiliza como referencia de una alternativa ampliamente adoptada en sistemas
-criptográficos tradicionales. Las construcciones basadas en LWE y problemas
-relacionados permiten estudiar alternativas fundamentadas en retículos y analizar sus
-propiedades frente a los requisitos considerados en este proyecto.
+ECDSA sirve de referencia por ser la opción tradicional más extendida. 
+Las construcciones basadas en LWE y en problemas relacionados representan las alternativas sobre retículos, 
+y con ellas se analiza qué tan bien cumplen los requisitos de este proyecto.
 
-La comparación se realiza utilizando un mismo modelo funcional de autenticación y un
-entorno experimental controlado. De esta manera, las diferencias reportadas buscan
-reflejar las características de cada alternativa criptográfica y no diferencias
-artificiales introducidas por procedimientos de medición distintos.
+Todas se comparan con el mismo modelo funcional de autenticación y en el mismo entorno controlado, 
+para que las diferencias reportadas se deban a cada alternativa y no a procedimientos de medición distintos.

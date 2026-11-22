@@ -1,16 +1,9 @@
 \subsection{Zero-Knowledge Proofs (ZKP)}
 \label{sec:zkp}
 
-Los protocolos de prueba de conocimiento cero (\textit{Zero-Knowledge Proofs} o ZKPs) son una técnica criptográfica que permite verificar la veracidad de una información sin necesidad de revelar los datos en sí \cite{mulder2023trends}; en autenticación, permiten que una parte demuestre su identidad ante otra sin entregarle su secreto. En este proceso interactúan dos partes: un \textbf{probador} (\textit{prover}), que genera y demuestra la validez de una afirmación, y un \textbf{verificador} (\textit{verifier}), quien comprueba dicha afirmación sin obtener información adicional ni conocer los datos subyacentes.
+Una prueba de conocimiento cero (\textit{Zero-Knowledge Proof}, ZKP) permite comprobar que una información es verdadera sin revelar los datos que la sustentan \cite{mulder2023trends}. En autenticación, esto significa que una parte demuestra su identidad ante otra sin entregarle su secreto. Intervienen dos partes: el \emph{probador} (\textit{prover}), que hace una afirmación y la demuestra, y el \emph{verificador} (\textit{verifier}), que la comprueba sin conocer los datos subyacentes ni obtener información adicional.
 
-Las ZKP pueden clasificarse principalmente en dos categorías \cite{mulder2023trends}:
-\begin{itemize}
-    \item \textbf{Interactivas:} donde el verificador envía múltiples retos aleatorios al probador hasta alcanzar un alto grado de certeza.
-    \item \textbf{No interactivas:} donde la validación se realiza en una sola interacción (\textit{single shot}).
-\end{itemize}
-
-La diferencia fundamental radica en que las pruebas no interactivas sustituyen los retos aleatorios del verificador por un elemento al que ambas partes tienen acceso: una cadena de referencia común (\textit{common reference string}, CRS) o una función hash modelada como oráculo aleatorio, que es lo que hace la transformación de Fiat--Shamir (Sección~\ref{sec:fiat-shamir}). Por eso la prueba generada es transferible y puede ser validada de forma independiente por terceros \cite{mulder2023trends}.
-
+Hay dos grandes familias de ZKP \cite{mulder2023trends}. En las interactivas, el verificador le envía al probador varios retos aleatorios hasta quedar convencido con un alto grado de certeza. En las no interactivas, la validación se hace con un único mensaje (\textit{single shot}). Para lograrlo, los retos del verificador se reemplazan por algo a lo que ambas partes tienen acceso: una cadena de referencia común (\textit{common reference string}, CRS) o una función hash modelada como oráculo aleatorio, que es lo que hace la transformación de Fiat--Shamir (Sección~\ref{sec:fiat-shamir}). Por eso la prueba no interactiva es transferible y cualquier tercero puede validarla por su cuenta \cite{mulder2023trends}.
 \paragraph{Ejemplos Intuitivos}
 Antes de la formalización, dos analogías clásicas ilustran la idea.
 
@@ -65,7 +58,7 @@ Para que la interacción $(\mathcal{P}, \mathcal{V})$ constituya un sistema de p
     \begin{equation}
     \Pr\left[ \langle \mathcal{P}^*(x), \mathcal{V}(x) \rangle = 1 \right] \le \epsilon(\lambda) \le \mathrm{negl}(\lambda)
     \end{equation}
-    La cantidad $\epsilon(\lambda)$ se denomina el \textit{error de solidez} (\textit{soundness error}). En sistemas donde la solidez se garantiza únicamente contra probadores acotados a tiempo polinomial (PPT), el sistema se denomina un \textit{argumento}. Se habla de prueba o argumento \textit{de conocimiento} cuando, además, existe un extractor $\mathsf{Ext}$ que, con acceso a cualquier probador que convenza al verificador con probabilidad no despreciable, obtiene un testigo $\omega$ con $(x, \omega) \in R$ (Sección~\ref{sec:rebobinado}).
+    La cantidad $\epsilon(\lambda)$ se denomina el \textit{error de solidez} (\textit{soundness error}). En sistemas donde la solidez se garantiza únicamente contra probadores acotados a tiempo polinomial (PPT), el sistema se denomina un \textit{argumento} y no una prueba. Se habla de prueba o argumento \textit{de conocimiento} cuando, además, existe un extractor $\mathsf{Ext}$ que, con acceso a cualquier probador que convenza al verificador con probabilidad no despreciable, obtiene un testigo $\omega$ con $(x, \omega) \in R$ (Sección~\ref{sec:rebobinado}).
 
     \item \textbf{Conocimiento Cero (\textit{Zero-Knowledge}):} Garantiza que el verificador no aprende ninguna información adicional sobre el testigo $\omega$ más allá de la veracidad de la afirmación $x \in L_R$. Se formaliza mediante la existencia de un \textbf{simulador} probabilístico en tiempo polinomial ($\mathsf{Sim}$) que, teniendo acceso únicamente a la instancia pública $x$ (y a la máquina del verificador, pero sin acceso a $\omega$), es capaz de generar una transcripción sintética que resulta indistinguible de la interacción real.
 
@@ -224,7 +217,7 @@ Cuando el extractor cuántico $\mathsf{Ext}$ interactúa con $\mathcal{P}^*$ par
     \item \textbf{Imposibilidad de Clonación:} Por el \textbf{Teorema de No-Clonación} (\textit{No-Cloning Theorem}), el extractor $\mathsf{Ext}$ no puede realizar una copia de respaldo del estado cuántico desconocido $|\psi\rangle$ antes de enviar el primer desafío $c_1$.
 \end{itemize}
 
-En consecuencia, el extractor no puede, en general, ``rebobinar'' a $\mathcal{P}^*$ a su estado cuántico exacto $|\psi\rangle$ previo a la primera medición. Si $\mathsf{Ext}$ envía un segundo desafío $c_2$ sobre el estado alterado $|\psi_{c_1, z_1}\rangle$, la respuesta obtenida puede no guardar la coherencia necesaria con el compromiso $a$, lo que invalida el argumento clásico de extracción \cite{liu2019revisiting}.
+Por eso el extractor no puede, en general, ``rebobinar'' a $\mathcal{P}^*$ a su estado cuántico exacto $|\psi\rangle$ previo a la primera medición. Si $\mathsf{Ext}$ envía un segundo desafío $c_2$ sobre el estado alterado $|\psi_{c_1, z_1}\rangle$, la respuesta obtenida puede no guardar la coherencia necesaria con el compromiso $a$, lo que invalida el argumento clásico de extracción \cite{liu2019revisiting}.
 
 \paragraph{Insuficiencia de las Reducciones Clásicas para Seguridad Poscuántica}
 La existencia del obstáculo del rebobinado cuántico conduce a un resultado crítico en la criptografía poscuántica: \textbf{la dureza poscuántica del problema matemático subyacente (como LWE o SIS) no garantiza automáticamente la seguridad poscuántica del protocolo ZKP si su demostración de solidez depende de reducciones por rebobinado} \cite{liu2019revisiting}. Lombardi et al. mostraron, de forma más general, que una demostración clásica de seguridad bajo LWE, incluso con reducciones de caja negra, no implica seguridad poscuántica: construyeron esquemas (deliberadamente artificiales) con esa demostración que un adversario cuántico rompe con unas pocas consultas \cite{lombardi2022postquantum}.
@@ -271,7 +264,7 @@ Las pruebas no interactivas obtenidas con Fiat--Shamir, en cambio, no son denega
 
 En los protocolos de autenticación distribuidos y sistemas de inicio de sesión único (\textit{Single Sign-On} - SSO), las credenciales y pruebas criptográficas generadas por el probador deben transmitirse frecuentemente a través de intermediarios no confiables o redes públicas antes de alcanzar la entidad verificadora final \cite{ma2026laasso}.
 
-Si las pruebas de conocimiento cero (ZKP) o los tokens de autenticación se transmitieran en texto claro a través del canal de comunicación, surgiría el problema del \textit{verificador no designado} \cite{ma2026laasso}. Un intermediario comprometido, como un nodo de la red controlado por el adversario, podría inspeccionar el contenido del token, extraer metadatos de la sesión o rastrear las pruebas enviadas en sesiones sucesivas \cite{ma2026laasso}. Esta exposición destruye la propiedad de no vinculabilidad (\textit{unlinkability}) y permite a adversarios intermedios perfilar los hábitos de uso del probador \cite{ma2026laasso}.
+Si esas pruebas o tokens viajaran en claro, aparecería el problema del \textit{verificador no designado}. Un intermediario comprometido (un nodo de la red controlado por el adversario, por ejemplo) podría leer el token, sacar metadatos de la sesión o seguir las pruebas de una sesión a otra. Con eso se pierde la no vinculabilidad, y el intermediario puede armar un perfil de los hábitos de uso del probador \cite{ma2026laasso}.
 
 \paragraph{Mecanismos de Encapsulamiento de Clave (KEM), Cifrado de Datos (DEM) y AEAD}
 \label{sec:kem-dem}
@@ -287,7 +280,7 @@ El paradigma KEM-DEM combina ambos mecanismos: el KEM transporta una clave nueva
 
 \paragraph{El Mecanismo de Ocultación de Tokens (\textit{Token Hiding}) mediante Cifrado Híbrido}
 
-Para neutralizar la amenaza de intercepción en nodos intermedios y garantizar que únicamente el verificador designado pueda validar la autenticación, el sistema de inicio de sesión único anónimo LAASSO introduce la técnica de \textit{ocultación de tokens} (\textit{token hiding}) \cite{ma2026laasso}. Este mecanismo cifra la prueba con un esquema híbrido poscuántico que combina un cifrado asimétrico sobre retículos modulares (Kyber) con el cifrado simétrico AES \cite{ma2026laasso}.
+LAASSO, un sistema anónimo de inicio de sesión único, responde a esta amenaza con la \textit{ocultación de tokens} (\textit{token hiding}): la prueba viaja cifrada y solo el verificador designado puede validarla. El cifrado es híbrido y poscuántico, y combina un cifrado asimétrico sobre retículos modulares (Kyber) con AES \cite{ma2026laasso}.
 
 En LAASSO, el verificador genera un par de claves $(vpk, vsk)$ de Kyber y custodia $vsk$; el probador elige una clave simétrica $K$, la cifra con el cifrado de clave pública de Kyber, $\text{tok}_1 = \text{Kyber.Enc}(vpk, K)$, y cifra con AES, bajo $K$, la prueba $\pi$ junto con el ticket y su periodo de validez, $\text{tok}_2 = \text{AES.Enc}(K, \{\pi, \mathsf{tk}, \nu\})$. El verificador recupera $K = \text{Kyber.Dec}(vsk, \text{tok}_1)$ y descifra $\text{tok}_2$ \cite{ma2026laasso}.
 
